@@ -23,7 +23,7 @@ pub struct Item {
     pub title: String,
     pub status: String,
     pub environment: Option<String>,
-    pub total_occurrances: Option<u64>,
+    pub total_occurrences: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -89,7 +89,7 @@ impl RollbarClient {
 
         let result = envelope
             .result
-            .context("item_by_counter response r=missing result")?;
+            .context("item_by_counter response is missing result")?;
 
         let item_id = match result {
             ItemByCounterResult::Item(item) => item.id,
@@ -97,5 +97,33 @@ impl RollbarClient {
         };
 
         Ok(ItemId(item_id))
+    }
+
+    pub async fn get_item(&self, item_id: ItemId) -> Result<Item> {
+        let url = format!("{}/item/{}/", self.base_url, item_id.0);
+
+        let envelope: ApiEnvelope<Item> = self
+            .http
+            .get(url)
+            .send()
+            .await
+            .context("request to item failed")?
+            .error_for_status()
+            .context("item returned non-success status")?
+            .json()
+            .await
+            .context("failed to decode item response")?;
+
+        if envelope.err != 0 {
+            bail!(
+                "rollbar item: {}",
+                envelope
+                    .message
+                    .as_deref()
+                    .unwrap_or("unknown error from Rollbar")
+            );
+        }
+
+        envelope.result.context("item response is missing result")
     }
 }
