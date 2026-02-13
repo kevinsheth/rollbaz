@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, bail};
 use reqwest::header::{HeaderMap, HeaderValue};
-use serde::Deserialize;
+use serde::{Deserialize, de::DeserializeOwned};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ItemCounter(pub u64);
@@ -33,9 +34,25 @@ enum ItemByCounterResult {
     Redirect {
         #[serde(rename = "itemId")]
         item_id: u64,
-        path: String,
-        uri: String,
     },
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ItemInstance {
+    pub id: u64,
+    #[serde(default)]
+    pub timestamp: Option<u64>,
+    #[serde(default)]
+    pub body: Option<Value>,
+    #[serde(default)]
+    pub data: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum ItemInstanceResult {
+    List(Vec<ItemInstance>),
+    Wrapped { instances: Vec<ItemInstance> },
 }
 
 pub struct RollbarClient {
@@ -62,24 +79,27 @@ impl RollbarClient {
         })
     }
 
-    pub async fn resolve_item_id_by_counter(&self, counter: ItemCounter) -> Result<ItemId> {
-        let url = format!("{}/item_by_counter/{}", self.base_url, counter.0);
+    async fn get_result<T>(&self, path: &str, op: &str) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        let url = format!("{}{}", self.base_url, path);
 
-        let envelope: ApiEnvelope<ItemByCounterResult> = self
+        let envelope: ApiEnvelope<T> = self
             .http
             .get(url)
             .send()
             .await
-            .context("request to item_by_counter failed")?
+            .with_context(|| format!("request to {op} failed"))?
             .error_for_status()
-            .context("item_by_counter returned non-success status")?
+            .with_context(|| format!("{op} returned non-success status"))?
             .json()
             .await
-            .context("failed to decode item_by_counter response")?;
+            .with_context(|| format!("failed to decode {op} response"))?;
 
         if envelope.err != 0 {
             bail!(
-                "rollbar item_by_counter: {}",
+                "rollbar {op}: {}",
                 envelope
                     .message
                     .as_deref()
@@ -87,9 +107,15 @@ impl RollbarClient {
             );
         }
 
-        let result = envelope
+        envelope
             .result
-            .context("item_by_counter response is missing result")?;
+            .with_context(|| format!("{op} response is missing result"))
+    }
+
+    pub async fn resolve_item_id_by_counter(&self, counter: ItemCounter) -> Result<ItemId> {
+        let path = format!("/item_by_counter/{}", counter.0);
+
+        let result: ItemByCounterResult = self.get_result(&path, "item_by_counter").await?;
 
         let item_id = match result {
             ItemByCounterResult::Item(item) => item.id,
@@ -100,30 +126,20 @@ impl RollbarClient {
     }
 
     pub async fn get_item(&self, item_id: ItemId) -> Result<Item> {
-        let url = format!("{}/item/{}/", self.base_url, item_id.0);
+        let path = format!("/item/{}/", item_id.0);
 
-        let envelope: ApiEnvelope<Item> = self
-            .http
-            .get(url)
-            .send()
-            .await
-            .context("request to item failed")?
-            .error_for_status()
-            .context("item returned non-success status")?
-            .json()
-            .await
-            .context("failed to decode item response")?;
+        self.get_result(&path, "item").await
+    }
 
-        if envelope.err != 0 {
-            bail!(
-                "rollbar item: {}",
-                envelope
-                    .message
-                    .as_deref()
-                    .unwrap_or("unknown error from Rollbar")
-            );
-        }
+    pub async fn get_latest_instance(&self, item_id: ItemId) -> Result<Option<ItemInstance>> {
+        let path = format!("/item/{}/instances?per_page=1", item_id.0);
 
-        envelope.result.context("item response is missing result")
+        let result: ItemInstanceResult = self.get_result(&path, "item instances").await?;
+        let mut instances = match result {
+            ItemInstanceResult::List(v) => v,
+            ItemInstanceResult::Wrapped { instances } => instances,
+        };
+
+        Ok(instances.pop())
     }
 }
