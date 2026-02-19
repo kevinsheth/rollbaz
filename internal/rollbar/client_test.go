@@ -196,6 +196,19 @@ func TestGetItemNonSuccessStatus(t *testing.T) {
 	}
 }
 
+func TestGetItemResponseTooLarge(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		large := strings.Repeat("a", maxResponseBodyBytes+1024)
+		_, _ = fmt.Fprintf(w, `{"err":0,"result":"%s"}`, large)
+	})
+	_, err := client.GetItem(context.Background(), domain.ItemID(1))
+	if err == nil {
+		t.Fatalf("expected response too large error")
+	}
+}
+
 func TestGetLatestInstanceReturnsNilForEmptyList(t *testing.T) {
 	t.Parallel()
 

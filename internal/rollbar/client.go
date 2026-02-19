@@ -20,6 +20,8 @@ import (
 
 const defaultBaseURL = "https://api.rollbar.com/api/1"
 
+const maxResponseBodyBytes = 4 << 20
+
 type Client struct {
 	http        *http.Client
 	baseURL     string
@@ -327,9 +329,12 @@ func (c *Client) doRequest(ctx context.Context, method string, endpointPath stri
 		return nil, c.wrap(fmt.Errorf("status %d: %s", response.StatusCode, strings.TrimSpace(string(limited))), op+" returned non-success status")
 	}
 
-	responseBody, err := io.ReadAll(response.Body)
+	responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBodyBytes+1))
 	if err != nil {
 		return nil, c.wrap(err, "read "+op+" response")
+	}
+	if len(responseBody) > maxResponseBodyBytes {
+		return nil, c.wrap(fmt.Errorf("response exceeds %d bytes", maxResponseBodyBytes), "read "+op+" response")
 	}
 
 	return responseBody, nil

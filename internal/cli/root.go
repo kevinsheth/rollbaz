@@ -195,6 +195,9 @@ func parseItemCounter(value string) (domain.ItemCounter, error) {
 	if err != nil {
 		return 0, fmt.Errorf("parse item counter: %w", err)
 	}
+	if parsedCounter == 0 {
+		return 0, errors.New("item counter must be greater than 0")
+	}
 
 	return domain.ItemCounter(parsedCounter), nil
 }
@@ -464,7 +467,8 @@ func runMute(parent context.Context, flags rootFlags, counter domain.ItemCounter
 }
 
 func parseMuteDuration(value string) (*int64, error) {
-	if strings.TrimSpace(value) == "" {
+	value = strings.TrimSpace(value)
+	if value == "" {
 		return nil, nil
 	}
 
@@ -510,10 +514,7 @@ func confirmWrite(flags rootFlags, action string, counter domain.ItemCounter) er
 	if flags.Yes {
 		return nil
 	}
-	if flags.Format != "human" {
-		return errors.New("confirmation required for write operation; rerun with --yes")
-	}
-	if !canPromptConfirmation() {
+	if flags.Format != "human" || !canPromptConfirmation() {
 		return errors.New("confirmation required for write operation; rerun with --yes")
 	}
 
@@ -537,7 +538,7 @@ func canPromptConfirmation() bool {
 	if !ok || !isTerminal(int(stdoutFile.Fd())) {
 		return false
 	}
-	input, ok := stdinFile()
+	input, ok := stdinReader.(*os.File)
 	if !ok || !isTerminal(int(input.Fd())) {
 		return false
 	}
@@ -776,15 +777,6 @@ func terminalRenderWidth() int {
 
 func stdoutFile() (*os.File, bool) {
 	file, ok := stdoutWriter.(*os.File)
-	if !ok {
-		return nil, false
-	}
-
-	return file, true
-}
-
-func stdinFile() (*os.File, bool) {
-	file, ok := stdinReader.(*os.File)
 	if !ok {
 		return nil, false
 	}

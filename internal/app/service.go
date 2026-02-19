@@ -59,6 +59,8 @@ type IssueFilters struct {
 	MaxOccurrences *uint64
 }
 
+const maxResolvedVersionLength = 40
+
 type ItemActionResult struct {
 	Action string       `json:"action"`
 	Issue  IssueSummary `json:"issue"`
@@ -137,7 +139,12 @@ func (s *Service) Show(ctx context.Context, counter domain.ItemCounter) (IssueDe
 }
 
 func (s *Service) Resolve(ctx context.Context, counter domain.ItemCounter, resolvedInVersion string) (ItemActionResult, error) {
-	patch := rollbar.ItemPatch{Status: "resolved", ResolvedInVersion: strings.TrimSpace(resolvedInVersion)}
+	trimmedVersion := strings.TrimSpace(resolvedInVersion)
+	if len(trimmedVersion) > maxResolvedVersionLength {
+		return ItemActionResult{}, fmt.Errorf("resolved_in_version must be <= %d characters", maxResolvedVersionLength)
+	}
+
+	patch := rollbar.ItemPatch{Status: "resolved", ResolvedInVersion: trimmedVersion}
 
 	return s.updateItemAndFetch(ctx, counter, patch, "resolved")
 }
@@ -148,10 +155,7 @@ func (s *Service) Reopen(ctx context.Context, counter domain.ItemCounter) (ItemA
 
 func (s *Service) Mute(ctx context.Context, counter domain.ItemCounter, durationSeconds *int64) (ItemActionResult, error) {
 	snoozeEnabled := true
-	patch := rollbar.ItemPatch{Status: "muted", SnoozeEnabled: &snoozeEnabled}
-	if durationSeconds != nil {
-		patch.SnoozeExpirationInSeconds = durationSeconds
-	}
+	patch := rollbar.ItemPatch{Status: "muted", SnoozeEnabled: &snoozeEnabled, SnoozeExpirationInSeconds: durationSeconds}
 
 	return s.updateItemAndFetch(ctx, counter, patch, "muted")
 }

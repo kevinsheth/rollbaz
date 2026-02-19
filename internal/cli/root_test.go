@@ -31,14 +31,12 @@ func TestRunShowHuman(t *testing.T) {
 }
 
 func TestRunActiveJSON(t *testing.T) {
-	stdout := setupServerAndStdout(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/1/reports/top_active_items" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		_, _ = fmt.Fprint(w, `{"err":0,"result":[{"item":{"id":1755568172,"counter":269,"title":"RST_STREAM","status":"active","environment":"production","occurrences":7,"last_occurrence_timestamp":1700000000}}]}`)
-	}))
-
-	err := runActive(context.Background(), rootFlags{Format: "json", Limit: 10})
+	stdout, err := runIssueListCommand(
+		t,
+		"/api/1/reports/top_active_items",
+		`{"err":0,"result":[{"item":{"id":1755568172,"counter":269,"title":"RST_STREAM","status":"active","environment":"production","occurrences":7,"last_occurrence_timestamp":1700000000}}]}`,
+		func() error { return runActive(context.Background(), rootFlags{Format: "json", Limit: 10}) },
+	)
 	if err != nil {
 		t.Fatalf("runActive() error = %v", err)
 	}
@@ -49,14 +47,12 @@ func TestRunActiveJSON(t *testing.T) {
 }
 
 func TestRunRecentHuman(t *testing.T) {
-	stdout := setupServerAndStdout(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/1/items" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		_, _ = fmt.Fprint(w, `{"err":0,"result":{"items":[{"id":1,"counter":2,"title":"Recent","status":"active","environment":"production","last_occurrence_timestamp":1700000000,"occurrences":5}]}}`)
-	}))
-
-	err := runRecent(context.Background(), rootFlags{Format: "human", Limit: 10})
+	stdout, err := runIssueListCommand(
+		t,
+		"/api/1/items",
+		`{"err":0,"result":{"items":[{"id":1,"counter":2,"title":"Recent","status":"active","environment":"production","last_occurrence_timestamp":1700000000,"occurrences":5}]}}`,
+		func() error { return runRecent(context.Background(), rootFlags{Format: "human", Limit: 10}) },
+	)
 	if err != nil {
 		t.Fatalf("runRecent() error = %v", err)
 	}
@@ -364,11 +360,35 @@ func runRootCommand(t *testing.T, args ...string) {
 	}
 }
 
+func runIssueListCommand(t *testing.T, expectedPath string, responseBody string, run func() error) (*bytes.Buffer, error) {
+	t.Helper()
+
+	stdout := setupServerAndStdout(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != expectedPath {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_, _ = fmt.Fprint(w, responseBody)
+	}))
+
+	err := run()
+
+	return stdout, err
+}
+
 func TestShowCommandInvalidCounter(t *testing.T) {
 	cmd := NewRootCmd()
 	cmd.SetArgs([]string{"show", "not-a-number"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatalf("expected parse error")
+	}
+}
+
+func TestShowCommandRejectsZeroCounter(t *testing.T) {
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"show", "0"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "item counter must be greater than 0") {
+		t.Fatalf("expected zero counter error, got %v", err)
 	}
 }
 

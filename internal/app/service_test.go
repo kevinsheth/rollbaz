@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -269,6 +270,21 @@ func TestServiceResolve(t *testing.T) {
 	}
 	if api.lastPatch.Status != "resolved" || api.lastPatch.ResolvedInVersion != "v1.2.3" {
 		t.Fatalf("unexpected resolve patch: %+v", api.lastPatch)
+	}
+}
+
+func TestServiceResolveRejectsLongResolvedVersion(t *testing.T) {
+	t.Parallel()
+
+	api := &actionAPI{resolvedID: 99, item: rollbar.Item{ID: 99, Counter: 7, Status: "resolved"}}
+	service := NewService(api)
+	tooLong := strings.Repeat("a", maxResolvedVersionLength+1)
+
+	if _, err := service.Resolve(context.Background(), 7, tooLong); err == nil {
+		t.Fatalf("expected resolved version length error")
+	}
+	if api.updateCalls != 0 {
+		t.Fatalf("expected no update call, got %d", api.updateCalls)
 	}
 }
 
