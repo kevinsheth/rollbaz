@@ -151,6 +151,19 @@ func TestServiceShowWithoutInstance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Show() error = %v", err)
 	}
+	if detail.MainError != "x" {
+		t.Fatalf("expected title fallback main error, got %q", detail.MainError)
+	}
+}
+
+func TestServiceShowWithoutInstanceOrTitle(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(fakeAPI{item: rollbar.Item{ID: 1, Counter: 2}})
+	detail, err := service.Show(context.Background(), 2)
+	if err != nil {
+		t.Fatalf("Show() error = %v", err)
+	}
 	if detail.MainError != "unknown" {
 		t.Fatalf("expected unknown main error, got %q", detail.MainError)
 	}

@@ -29,10 +29,18 @@ type rootFlags struct {
 }
 
 var (
-	newRollbarClient           = rollbar.New
-	newConfigStore             = config.NewStore
-	stdoutWriter     io.Writer = os.Stdout
-	stderrWriter     io.Writer = os.Stderr
+	newRollbarClient                             = rollbar.New
+	newConfigStore                               = config.NewStore
+	isTerminal       func(int) bool              = term.IsTerminal
+	getTerminalSize  func(int) (int, int, error) = term.GetSize
+	stdoutWriter     io.Writer                   = os.Stdout
+	stderrWriter     io.Writer                   = os.Stderr
+)
+
+const (
+	fallbackRenderWidth = 120
+	minRenderWidth      = 80
+	maxRenderWidth      = 140
 )
 
 func NewRootCmd() *cobra.Command {
@@ -225,7 +233,7 @@ func runIssueList(parent context.Context, flags rootFlags, load func(context.Con
 	}
 
 	jsonPayload := redact.Value(map[string]any{"issues": issues}, token)
-	return printOutput(flags.Format, output.RenderIssueListHuman(issues), jsonPayload)
+	return printOutput(flags.Format, output.RenderIssueListHumanWithWidth(issues, terminalRenderWidth()), jsonPayload)
 }
 
 func withConfigStore(action func(*config.Store) error) error {
@@ -301,7 +309,7 @@ func runShow(parent context.Context, flags rootFlags, counter domain.ItemCounter
 	}
 	jsonPayload := redact.Value(payload, token)
 
-	return printOutput(flags.Format, output.RenderIssueDetailHuman(detail), jsonPayload)
+	return printOutput(flags.Format, output.RenderIssueDetailHumanWithWidth(detail, terminalRenderWidth()), jsonPayload)
 }
 
 func printOutput(format string, human string, payload any) error {
@@ -409,10 +417,38 @@ func shouldRenderProgress(format string) bool {
 	if os.Getenv("CI") != "" {
 		return false
 	}
-	file, ok := stdoutWriter.(*os.File)
+	file, ok := stdoutFile()
 	if !ok {
 		return false
 	}
 
-	return term.IsTerminal(int(file.Fd()))
+	return isTerminal(int(file.Fd()))
+}
+
+func terminalRenderWidth() int {
+	file, ok := stdoutFile()
+	if !ok {
+		return fallbackRenderWidth
+	}
+	if !isTerminal(int(file.Fd())) {
+		return fallbackRenderWidth
+	}
+	width, _, err := getTerminalSize(int(file.Fd()))
+	if err != nil || width < minRenderWidth {
+		return fallbackRenderWidth
+	}
+	if width-2 > maxRenderWidth {
+		return maxRenderWidth
+	}
+
+	return width - 2
+}
+
+func stdoutFile() (*os.File, bool) {
+	file, ok := stdoutWriter.(*os.File)
+	if !ok {
+		return nil, false
+	}
+
+	return file, true
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/kevinsheth/rollbaz/internal/domain"
 	"github.com/kevinsheth/rollbaz/internal/rollbar"
@@ -114,6 +115,9 @@ func (s *Service) Show(ctx context.Context, counter domain.ItemCounter) (IssueDe
 	if instance != nil {
 		mainError = summary.MainError(instance.Body, instance.Data)
 		instanceRaw = instance.Raw
+	}
+	if mainError == "unknown" && strings.TrimSpace(item.Title) != "" {
+		mainError = item.Title
 	}
 
 	return IssueDetail{

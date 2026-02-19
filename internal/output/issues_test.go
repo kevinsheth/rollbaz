@@ -56,6 +56,24 @@ func TestRenderIssueListHumanTruncatesLongTitle(t *testing.T) {
 	}
 }
 
+func TestRenderIssueListHumanWithWidth(t *testing.T) {
+	t.Parallel()
+
+	issues := []app.IssueSummary{{
+		Counter: domain.ItemCounter(1),
+		Title:   strings.Repeat("x", 200),
+	}}
+
+	narrow := RenderIssueListHumanWithWidth(issues, 90)
+	wide := RenderIssueListHumanWithWidth(issues, 140)
+
+	narrowLongest := longestLineWidth(narrow)
+	wideLongest := longestLineWidth(wide)
+	if wideLongest <= narrowLongest {
+		t.Fatalf("expected wide table to allow wider output: narrow=%d wide=%d", narrowLongest, wideLongest)
+	}
+}
+
 func TestRenderJSON(t *testing.T) {
 	t.Parallel()
 
@@ -73,9 +91,6 @@ func TestRenderIssueDetailHuman(t *testing.T) {
 
 	detail := app.IssueDetail{IssueSummary: app.IssueSummary{Counter: domain.ItemCounter(1), ItemID: domain.ItemID(2)}}
 	got := RenderIssueDetailHuman(detail)
-	if !strings.Contains(got, "Main Error:") {
-		t.Fatalf("unexpected output: %q", got)
-	}
 	if !strings.Contains(got, "Counter") || !strings.Contains(got, "Item ID") {
 		t.Fatalf("unexpected output: %q", got)
 	}
@@ -85,13 +100,64 @@ func TestRenderIssueDetailHumanTruncatesMainError(t *testing.T) {
 	t.Parallel()
 
 	longError := strings.Repeat("database-timeout-", 20)
-	detail := app.IssueDetail{MainError: longError}
+	detail := app.IssueDetail{MainError: longError, IssueSummary: app.IssueSummary{Title: "different title"}}
 	got := RenderIssueDetailHuman(detail)
 	if strings.Contains(got, longError) {
 		t.Fatalf("expected truncated main error, got: %q", got)
 	}
 	if !strings.Contains(got, "Main Error:") {
 		t.Fatalf("expected main error heading, got: %q", got)
+	}
+}
+
+func TestRenderIssueDetailHumanOmitsMainErrorWhenTitleContainsIt(t *testing.T) {
+	t.Parallel()
+
+	detail := app.IssueDetail{
+		MainError: "timeout",
+		IssueSummary: app.IssueSummary{
+			Title: "Database timeout while processing webhook",
+		},
+	}
+	got := RenderIssueDetailHuman(detail)
+	if strings.Contains(got, "Main Error:") {
+		t.Fatalf("expected main error heading omitted, got: %q", got)
+	}
+}
+
+func TestShouldIncludeMainErrorLine(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		detail app.IssueDetail
+		want   bool
+	}{
+		{name: "unknown", detail: app.IssueDetail{MainError: "unknown"}, want: false},
+		{name: "empty", detail: app.IssueDetail{MainError: ""}, want: false},
+		{name: "no title", detail: app.IssueDetail{MainError: "boom"}, want: true},
+		{name: "contained in title", detail: app.IssueDetail{MainError: "boom", IssueSummary: app.IssueSummary{Title: "service boom error"}}, want: false},
+		{name: "distinct", detail: app.IssueDetail{MainError: "boom", IssueSummary: app.IssueSummary{Title: "different title"}}, want: true},
+	}
+
+	for _, tc := range tests {
+		if got := shouldIncludeMainErrorLine(tc.detail); got != tc.want {
+			t.Fatalf("%s: shouldIncludeMainErrorLine() = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestRenderIssueDetailHumanWithWidth(t *testing.T) {
+	t.Parallel()
+
+	detail := app.IssueDetail{IssueSummary: app.IssueSummary{Counter: domain.ItemCounter(1), ItemID: domain.ItemID(2), Title: strings.Repeat("y", 200)}, MainError: strings.Repeat("x", 200)}
+	narrow := RenderIssueDetailHumanWithWidth(detail, 100)
+	wide := RenderIssueDetailHumanWithWidth(detail, 140)
+
+	narrowLongest := longestLineWidth(narrow)
+	wideLongest := longestLineWidth(wide)
+	if narrowLongest >= wideLongest {
+		t.Fatalf("expected wider output for larger width: narrow=%d wide=%d", narrowLongest, wideLongest)
 	}
 }
 
@@ -111,4 +177,15 @@ func TestFormatTimestamp(t *testing.T) {
 	if got := formatTimestamp(&overflow); got != "unknown" {
 		t.Fatalf("formatTimestamp(overflow) = %q", got)
 	}
+}
+
+func longestLineWidth(value string) int {
+	max := 0
+	for _, line := range strings.Split(value, "\n") {
+		if width := len(line); width > max {
+			max = width
+		}
+	}
+
+	return max
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -295,6 +296,90 @@ func TestSanitizeError(t *testing.T) {
 	err := sanitizeError(fmt.Errorf("token leaked super-secret"), "super-secret")
 	if strings.Contains(err.Error(), "super-secret") {
 		t.Fatalf("token should be redacted")
+	}
+}
+
+func TestShouldRenderProgress(t *testing.T) {
+	originalStdout := stdoutWriter
+	originalIsTerminal := isTerminal
+	stdoutWriter = os.Stdout
+	isTerminal = func(int) bool { return true }
+	t.Cleanup(func() {
+		stdoutWriter = originalStdout
+		isTerminal = originalIsTerminal
+	})
+
+	t.Setenv("CI", "")
+	if !shouldRenderProgress("human") {
+		t.Fatalf("expected progress enabled for human terminal output")
+	}
+	if shouldRenderProgress("json") {
+		t.Fatalf("expected progress disabled for json")
+	}
+	t.Setenv("CI", "1")
+	if shouldRenderProgress("human") {
+		t.Fatalf("expected progress disabled in CI")
+	}
+}
+
+func TestTerminalRenderWidth(t *testing.T) {
+	originalStdout := stdoutWriter
+	originalIsTerminal := isTerminal
+	originalGetSize := getTerminalSize
+	t.Cleanup(func() {
+		stdoutWriter = originalStdout
+		isTerminal = originalIsTerminal
+		getTerminalSize = originalGetSize
+	})
+
+	stdoutWriter = io.Discard
+	if got := terminalRenderWidth(); got != fallbackRenderWidth {
+		t.Fatalf("terminalRenderWidth(non-file) = %d", got)
+	}
+
+	stdoutWriter = os.Stdout
+	isTerminal = func(int) bool { return true }
+	getTerminalSize = func(int) (int, int, error) { return 220, 50, nil }
+	if got := terminalRenderWidth(); got != maxRenderWidth {
+		t.Fatalf("terminalRenderWidth(max clamp) = %d", got)
+	}
+
+	getTerminalSize = func(int) (int, int, error) { return 100, 50, nil }
+	if got := terminalRenderWidth(); got != 98 {
+		t.Fatalf("terminalRenderWidth(normal) = %d", got)
+	}
+}
+
+func TestRunWithProgress(t *testing.T) {
+	originalStdout := stdoutWriter
+	originalIsTerminal := isTerminal
+	originalGetSize := getTerminalSize
+	t.Cleanup(func() {
+		stdoutWriter = originalStdout
+		isTerminal = originalIsTerminal
+		getTerminalSize = originalGetSize
+	})
+
+	stdoutWriter = io.Discard
+	value, err := runWithProgress("json", "noop", func() (int, error) { return 42, nil })
+	if err != nil || value != 42 {
+		t.Fatalf("runWithProgress(json) = %d, err=%v", value, err)
+	}
+
+	tempFile, err := os.CreateTemp(t.TempDir(), "progress")
+	if err != nil {
+		t.Fatalf("CreateTemp() error = %v", err)
+	}
+	defer func() {
+		_ = tempFile.Close()
+	}()
+	stdoutWriter = tempFile
+	isTerminal = func(int) bool { return true }
+	getTerminalSize = func(int) (int, int, error) { return 120, 40, nil }
+
+	value, err = runWithProgress("human", "test", func() (int, error) { return 7, nil })
+	if err != nil || value != 7 {
+		t.Fatalf("runWithProgress(human) = %d, err=%v", value, err)
 	}
 }
 
