@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/kevinsheth/rollbaz/compare/v0.1.5...v0.1.6) (2026-02-19)
+
+
+### Bug Fixes
+
+* **ci:** publish releases in release-please finalize job ([#14](https://github.com/kevinsheth/rollbaz/issues/14)) ([c1e6542](https://github.com/kevinsheth/rollbaz/commit/c1e65421312cd3ce5a436f14d3d09dc861dc7049))
+
 ## [0.1.5](https://github.com/kevinsheth/rollbaz/compare/v0.1.4...v0.1.5) (2026-02-19)
 
 
