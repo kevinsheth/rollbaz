@@ -77,6 +77,37 @@ func TestStoreErrors(t *testing.T) {
 	}
 }
 
+func TestStoreRemoveAllProjects(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newTempStore(t)
+	if err := store.AddProject("alpha", "token-a"); err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	if err := store.AddProject("beta", "token-b"); err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+
+	if err := store.RemoveAllProjects(); err != nil {
+		t.Fatalf("RemoveAllProjects() error = %v", err)
+	}
+
+	file, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if file.ActiveProject != "" {
+		t.Fatalf("ActiveProject = %q, want empty", file.ActiveProject)
+	}
+	if len(file.Projects) != 0 {
+		t.Fatalf("Projects length = %d, want 0", len(file.Projects))
+	}
+
+	if _, _, err := store.ResolveToken(""); err == nil {
+		t.Fatalf("expected no configured projects error")
+	}
+}
+
 func TestStoreAddProjectUpdatesExisting(t *testing.T) {
 	t.Parallel()
 
