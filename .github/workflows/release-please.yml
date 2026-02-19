@@ -62,11 +62,10 @@ jobs:
             }
 
             const pr = prs.data[0];
-            const fullPr = await github.rest.pulls.get({ owner, repo, pull_number: pr.number });
-            const mergeSha = fullPr.data.merge_commit_sha;
+            const headSha = pr.head.sha;
 
-            if (!mergeSha) {
-              core.setFailed(`Unable to resolve merge commit SHA for PR #${pr.number}`);
+            if (!headSha) {
+              core.setFailed(`Unable to resolve head SHA for PR #${pr.number}`);
               return;
             }
 
@@ -74,7 +73,7 @@ jobs:
               owner,
               repo,
               name: 'verify',
-              head_sha: mergeSha,
+              head_sha: headSha,
               status: 'in_progress',
               output: {
                 title: 'verify',
