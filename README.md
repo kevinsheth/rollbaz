@@ -33,6 +33,8 @@ go build ./cmd/rollbaz
 
 Use a Rollbar project token with read access.
 
+Rollbar token types and permissions: https://docs.rollbar.com/docs/access-tokens
+
 ```bash
 rollbaz project add my-service --token '<ROLLBAR_PROJECT_TOKEN>'
 rollbaz project list
@@ -98,6 +100,8 @@ Token precedence:
 2. configured `--project` token
 3. active configured project token
 4. `ROLLBAR_ACCESS_TOKEN`
+
+If you are unsure which token to use, see: https://docs.rollbar.com/docs/access-tokens
 
 ## Quality Gates
 
