@@ -4,7 +4,18 @@ Fast CLI for Rollbar triage without opening Rollbar.
 
 ## Install
 
+Download a prebuilt binary from GitHub Releases:
+
+1. Open `https://github.com/kevinsheth/rollbaz/releases`
+2. Download the archive matching your OS/arch (for example `rollbaz_v0.1.0_darwin_arm64.tar.gz`)
+3. Extract it and move `rollbaz` onto your `PATH`
+
+Or install from source:
+
 ```bash
+go install github.com/kevinsheth/rollbaz/cmd/rollbaz@latest
+
+# local build
 go build ./cmd/rollbaz
 ```
 
@@ -85,4 +96,13 @@ go test ./...
 go test -race ./...
 go test ./internal/... -coverprofile=coverage.out && go run ./scripts/coveragecheck -min 85 -file coverage.out
 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+```
+
+## Releasing
+
+Maintainers can publish a release by pushing a semver tag. The `release` GitHub Actions workflow runs GoReleaser and publishes cross-platform binaries to GitHub Releases.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
 ```
