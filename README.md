@@ -10,6 +10,8 @@ go build ./cmd/rollbaz
 
 ## Configure Projects
 
+Use a Rollbar project token with read access.
+
 ```bash
 ./rollbaz project add my-service --token '<ROLLBAR_PROJECT_TOKEN>'
 ./rollbaz project list
@@ -29,9 +31,21 @@ Tokens are stored in your user config directory with strict file permissions (`0
 
 Use `--format json` on list and show commands for LLM-friendly machine output.
 
+List filters (for `rollbaz`, `active`, and `recent`):
+
+```bash
+--env <environment>
+--status <status>
+--since <RFC3339-or-unix-seconds>
+--until <RFC3339-or-unix-seconds>
+--min-occurrences <count>
+--max-occurrences <count>
+```
+
 Human output uses pretty terminal tables and UTC timestamps (`RFC3339`).
 In interactive terminals, commands show a short progress indicator while data is loading.
-Long fields are truncated in human mode to keep tables readable.
+Tables auto-size to terminal width and keep a consistent layout across commands.
+Long fields are truncated in human mode to keep output readable.
 
 ## Examples
 
@@ -42,15 +56,13 @@ Long fields are truncated in human mode to keep tables readable.
 
 # Daily triage
 ./rollbaz active --limit 5
-# sample row: #274   active   production   6   2024-11-16T12:43:01Z   Database timeout while processing webhook
-
 ./rollbaz recent --limit 5
-# sample row: #233   active   production   83  2024-11-16T12:43:32Z   API request failed with upstream 503
+
+# filtered triage
+./rollbaz active --env production --status active --since 2026-02-19T00:00:00Z --min-occurrences 5
 
 # Deep dive on one issue
 ./rollbaz show 274
-# sample: Main Error: java.sql.SQLTransientConnectionException: Connection timeout
-#         followed by a table with title/status/environment/occurrences/counter/item id
 
 # LLM-readable output
 ./rollbaz show 274 --format json

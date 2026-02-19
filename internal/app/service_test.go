@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"testing"
+	"time"
 
 	"github.com/kevinsheth/rollbaz/internal/domain"
 	"github.com/kevinsheth/rollbaz/internal/rollbar"
@@ -59,7 +61,7 @@ func TestServiceActive(t *testing.T) {
 	occurrences := uint64(3)
 	service := NewService(fakeAPI{activeItems: []rollbar.Item{{ID: 1, Counter: 7, Title: "x", TotalOccurrences: &occurrences}}})
 
-	issues, err := service.Active(context.Background(), 10)
+	issues, err := service.Active(context.Background(), 10, IssueFilters{})
 	if err != nil {
 		t.Fatalf("Active() error = %v", err)
 	}
@@ -81,7 +83,7 @@ func TestServiceRecentSortsByTimestampThenOccurrence(t *testing.T) {
 		{ID: 2, Counter: 2, LastOccurrenceTimestamp: &ts2, LastOccurrenceID: &o2},
 	}})
 
-	issues, err := service.Recent(context.Background(), 10)
+	issues, err := service.Recent(context.Background(), 10, IssueFilters{})
 	if err != nil {
 		t.Fatalf("Recent() error = %v", err)
 	}
@@ -101,7 +103,7 @@ func TestServiceRecentLimitAndOccurrenceFallback(t *testing.T) {
 		{ID: 2, Counter: 2, LastOccurrenceID: &o2},
 	}})
 
-	issues, err := service.Recent(context.Background(), 1)
+	issues, err := service.Recent(context.Background(), 1, IssueFilters{})
 	if err != nil {
 		t.Fatalf("Recent() error = %v", err)
 	}
@@ -132,10 +134,10 @@ func TestServiceErrors(t *testing.T) {
 	t.Parallel()
 
 	service := NewService(fakeAPI{err: errors.New("bad")})
-	if _, err := service.Active(context.Background(), 1); err == nil {
+	if _, err := service.Active(context.Background(), 1, IssueFilters{}); err == nil {
 		t.Fatalf("expected Active error")
 	}
-	if _, err := service.Recent(context.Background(), 1); err == nil {
+	if _, err := service.Recent(context.Background(), 1, IssueFilters{}); err == nil {
 		t.Fatalf("expected Recent error")
 	}
 	if _, err := service.Show(context.Background(), 1); err == nil {
@@ -166,5 +168,60 @@ func TestServiceShowWithoutInstanceOrTitle(t *testing.T) {
 	}
 	if detail.MainError != "unknown" {
 		t.Fatalf("expected unknown main error, got %q", detail.MainError)
+	}
+}
+
+func TestServiceActiveFilters(t *testing.T) {
+	t.Parallel()
+
+	ts := uint64(1771495200)
+	occurrences := uint64(7)
+	service := NewService(fakeAPI{activeItems: []rollbar.Item{{
+		ID:                      1,
+		Counter:                 11,
+		Environment:             "production",
+		Status:                  "active",
+		LastOccurrenceTimestamp: &ts,
+		TotalOccurrences:        &occurrences,
+	}}})
+
+	since := time.Date(2026, 2, 19, 9, 0, 0, 0, time.UTC)
+	min := uint64(5)
+	issues, err := service.Active(context.Background(), 10, IssueFilters{Environment: "production", Status: "active", Since: &since, MinOccurrences: &min})
+	if err != nil {
+		t.Fatalf("Active() error = %v", err)
+	}
+	if len(issues) != 1 {
+		t.Fatalf("expected one filtered issue, got %d", len(issues))
+	}
+
+	wrongEnv, err := service.Active(context.Background(), 10, IssueFilters{Environment: "development"})
+	if err != nil {
+		t.Fatalf("Active() error = %v", err)
+	}
+	if len(wrongEnv) != 0 {
+		t.Fatalf("expected zero issues for mismatched env, got %d", len(wrongEnv))
+	}
+}
+
+func TestServiceActiveFiltersRejectOverflowTimestamp(t *testing.T) {
+	t.Parallel()
+
+	overflowTS := uint64(math.MaxUint64)
+	service := NewService(fakeAPI{activeItems: []rollbar.Item{{
+		ID:                      1,
+		Counter:                 12,
+		Environment:             "production",
+		Status:                  "active",
+		LastOccurrenceTimestamp: &overflowTS,
+	}}})
+
+	since := time.Date(2026, 2, 19, 0, 0, 0, 0, time.UTC)
+	issues, err := service.Active(context.Background(), 10, IssueFilters{Since: &since})
+	if err != nil {
+		t.Fatalf("Active() error = %v", err)
+	}
+	if len(issues) != 0 {
+		t.Fatalf("expected overflow timestamp to be filtered out, got %d issues", len(issues))
 	}
 }

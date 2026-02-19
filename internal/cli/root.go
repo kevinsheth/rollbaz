@@ -22,10 +22,16 @@ import (
 )
 
 type rootFlags struct {
-	Format  string
-	Project string
-	Token   string
-	Limit   int
+	Format         string
+	Project        string
+	Token          string
+	Limit          int
+	Environment    string
+	Status         string
+	Since          string
+	Until          string
+	MinOccurrences string
+	MaxOccurrences string
 }
 
 var (
@@ -59,6 +65,12 @@ func NewRootCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&flags.Project, "project", "", "Configured project name")
 	cmd.PersistentFlags().StringVar(&flags.Token, "token", "", "Rollbar project token (overrides configured project token)")
 	cmd.PersistentFlags().IntVar(&flags.Limit, "limit", 10, "Maximum number of issues to show")
+	cmd.PersistentFlags().StringVar(&flags.Environment, "env", "", "Filter by environment")
+	cmd.PersistentFlags().StringVar(&flags.Status, "status", "", "Filter by status")
+	cmd.PersistentFlags().StringVar(&flags.Since, "since", "", "Filter by last seen time (RFC3339 or unix seconds)")
+	cmd.PersistentFlags().StringVar(&flags.Until, "until", "", "Filter by last seen time (RFC3339 or unix seconds)")
+	cmd.PersistentFlags().StringVar(&flags.MinOccurrences, "min-occurrences", "", "Filter by minimum occurrence count")
+	cmd.PersistentFlags().StringVar(&flags.MaxOccurrences, "max-occurrences", "", "Filter by maximum occurrence count")
 
 	cmd.AddCommand(newActiveCmd(flags))
 	cmd.AddCommand(newRecentCmd(flags))
@@ -205,18 +217,18 @@ func newProjectRemoveCmd() *cobra.Command {
 }
 
 func runActive(parent context.Context, flags rootFlags) error {
-	return runIssueList(parent, flags, func(ctx context.Context, service *app.Service, limit int) ([]app.IssueSummary, error) {
-		return service.Active(ctx, limit)
+	return runIssueList(parent, flags, func(ctx context.Context, service *app.Service, limit int, filters app.IssueFilters) ([]app.IssueSummary, error) {
+		return service.Active(ctx, limit, filters)
 	})
 }
 
 func runRecent(parent context.Context, flags rootFlags) error {
-	return runIssueList(parent, flags, func(ctx context.Context, service *app.Service, limit int) ([]app.IssueSummary, error) {
-		return service.Recent(ctx, limit)
+	return runIssueList(parent, flags, func(ctx context.Context, service *app.Service, limit int, filters app.IssueFilters) ([]app.IssueSummary, error) {
+		return service.Recent(ctx, limit, filters)
 	})
 }
 
-func runIssueList(parent context.Context, flags rootFlags, load func(context.Context, *app.Service, int) ([]app.IssueSummary, error)) error {
+func runIssueList(parent context.Context, flags rootFlags, load func(context.Context, *app.Service, int, app.IssueFilters) ([]app.IssueSummary, error)) error {
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 
@@ -225,8 +237,13 @@ func runIssueList(parent context.Context, flags rootFlags, load func(context.Con
 		return err
 	}
 
+	filters, err := parseIssueFilters(flags)
+	if err != nil {
+		return err
+	}
+
 	issues, err := runWithProgress(flags.Format, "Loading issues", func() ([]app.IssueSummary, error) {
-		return load(ctx, service, flags.Limit)
+		return load(ctx, service, flags.Limit, filters)
 	})
 	if err != nil {
 		return sanitizeError(err, token)
@@ -367,6 +384,89 @@ func resolveAccessToken(flags rootFlags) (string, error) {
 	return token, nil
 }
 
+func parseIssueFilters(flags rootFlags) (app.IssueFilters, error) {
+	filters := app.IssueFilters{
+		Environment: flags.Environment,
+		Status:      flags.Status,
+	}
+
+	since, err := parseFilterTime(flags.Since)
+	if err != nil {
+		return app.IssueFilters{}, fmt.Errorf("parse --since: %w", err)
+	}
+	filters.Since = since
+
+	until, err := parseFilterTime(flags.Until)
+	if err != nil {
+		return app.IssueFilters{}, fmt.Errorf("parse --until: %w", err)
+	}
+	filters.Until = until
+
+	minOccurrences, err := parseOptionalUint64(flags.MinOccurrences)
+	if err != nil {
+		return app.IssueFilters{}, fmt.Errorf("parse --min-occurrences: %w", err)
+	}
+	filters.MinOccurrences = minOccurrences
+
+	maxOccurrences, err := parseOptionalUint64(flags.MaxOccurrences)
+	if err != nil {
+		return app.IssueFilters{}, fmt.Errorf("parse --max-occurrences: %w", err)
+	}
+	filters.MaxOccurrences = maxOccurrences
+
+	if err := validateIssueFilters(filters); err != nil {
+		return app.IssueFilters{}, err
+	}
+
+	return filters, nil
+}
+
+func validateIssueFilters(filters app.IssueFilters) error {
+	if filters.Since != nil && filters.Until != nil && filters.Since.After(*filters.Until) {
+		return errors.New("--since must be before or equal to --until")
+	}
+	if filters.MinOccurrences != nil && filters.MaxOccurrences != nil && *filters.MinOccurrences > *filters.MaxOccurrences {
+		return errors.New("--min-occurrences must be <= --max-occurrences")
+	}
+
+	return nil
+}
+
+func parseOptionalUint64(value string) (*uint64, error) {
+	if value == "" {
+		return nil, nil
+	}
+
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse uint64: %w", err)
+	}
+
+	return &parsed, nil
+}
+
+func parseFilterTime(value string) (*time.Time, error) {
+	if value == "" {
+		return nil, nil
+	}
+
+	if unixSeconds, err := strconv.ParseInt(value, 10, 64); err == nil {
+		if unixSeconds < 0 {
+			return nil, errors.New("unix seconds must be non-negative")
+		}
+		parsed := time.Unix(unixSeconds, 0).UTC()
+		return &parsed, nil
+	}
+
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return nil, fmt.Errorf("parse rfc3339: %w", err)
+	}
+	utc := parsed.UTC()
+
+	return &utc, nil
+}
+
 func sanitizeError(err error, token string) error {
 	return errors.New(redact.String(err.Error(), token))
 }
@@ -376,6 +476,29 @@ func runWithProgress[T any](format string, message string, operation func() (T, 
 		return operation()
 	}
 
+	writer := newProgressWriter()
+	tracker := progress.Tracker{Message: message, Total: 0, Units: progress.UnitsDefault}
+	writer.AppendTracker(&tracker)
+
+	done := make(chan struct{})
+	go func() {
+		writer.Render()
+		close(done)
+	}()
+
+	result, err := operation()
+	if err != nil {
+		tracker.MarkAsErrored()
+	} else {
+		tracker.MarkAsDone()
+	}
+
+	waitForProgressStop(done)
+
+	return result, err
+}
+
+func newProgressWriter() progress.Writer {
 	writer := progress.NewWriter()
 	writer.SetAutoStop(true)
 	writer.SetMessageLength(28)
@@ -391,23 +514,14 @@ func runWithProgress[T any](format string, message string, operation func() (T, 
 	writer.Style().Visibility.TrackerOverall = false
 	writer.Style().Visibility.Value = false
 
-	tracker := progress.Tracker{Message: message, Total: 0, Units: progress.UnitsDefault}
-	writer.AppendTracker(&tracker)
+	return writer
+}
 
-	go writer.Render()
-
-	result, err := operation()
-	if err != nil {
-		tracker.MarkAsErrored()
-	} else {
-		tracker.MarkAsDone()
+func waitForProgressStop(done <-chan struct{}) {
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
 	}
-
-	for writer.IsRenderInProgress() {
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	return result, err
 }
 
 func shouldRenderProgress(format string) bool {

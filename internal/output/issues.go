@@ -39,16 +39,11 @@ func RenderIssueListHumanWithWidth(issues []app.IssueSummary, maxWidth int) stri
 	tw.AppendHeader(table.Row{"COUNTER", "STATUS", "ENV", "OCCURRENCES", "LAST_SEEN", "TITLE"})
 
 	for _, issue := range issues {
-		occurrences := "unknown"
-		if issue.Occurrences != nil {
-			occurrences = fmt.Sprintf("%d", *issue.Occurrences)
-		}
-
 		tw.AppendRow(table.Row{
 			issue.Counter.String(),
 			fallback(issue.Status),
 			fallback(issue.Environment),
-			occurrences,
+			formatOccurrences(issue.Occurrences),
 			formatTimestamp(issue.LastOccurrenceTimestamp),
 			fallback(issue.Title),
 		})
@@ -62,16 +57,8 @@ func RenderIssueDetailHuman(detail app.IssueDetail) string {
 }
 
 func RenderIssueDetailHumanWithWidth(detail app.IssueDetail, maxWidth int) string {
-	occurrences := "unknown"
-	if detail.Occurrences != nil {
-		occurrences = fmt.Sprintf("%d", *detail.Occurrences)
-	}
-
 	valueWidth := detailValueWidth(maxWidth)
-	rowWidth := maxWidth
-	if rowWidth <= 0 {
-		rowWidth = defaultDetailRowWidth
-	}
+	rowWidth := normalizeWidth(maxWidth, defaultDetailRowWidth)
 
 	tw := table.NewWriter()
 	tw.SetStyle(table.StyleLight)
@@ -82,7 +69,7 @@ func RenderIssueDetailHumanWithWidth(detail app.IssueDetail, maxWidth int) strin
 	tw.AppendRow(table.Row{"Title", fallback(detail.Title)})
 	tw.AppendRow(table.Row{"Status", fallback(detail.Status)})
 	tw.AppendRow(table.Row{"Environment", fallback(detail.Environment)})
-	tw.AppendRow(table.Row{"Occurrences", occurrences})
+	tw.AppendRow(table.Row{"Occurrences", formatOccurrences(detail.Occurrences)})
 	tw.AppendRow(table.Row{"Counter", detail.Counter.String()})
 	tw.AppendRow(table.Row{"Item ID", detail.ItemID.String()})
 
@@ -116,10 +103,7 @@ func formatTimestamp(unixSeconds *uint64) string {
 }
 
 func configureListTable(tw table.Writer, maxWidth int) {
-	targetWidth := maxWidth
-	if targetWidth <= 0 {
-		targetWidth = defaultListRowWidth
-	}
+	targetWidth := normalizeWidth(maxWidth, defaultListRowWidth)
 	titleWidth := targetWidth - listNonTitleWidth
 	if titleWidth < minListTitleWidth {
 		titleWidth = minListTitleWidth
@@ -135,10 +119,7 @@ func configureListTable(tw table.Writer, maxWidth int) {
 }
 
 func detailValueWidth(maxWidth int) int {
-	targetWidth := maxWidth
-	if targetWidth <= 0 {
-		targetWidth = defaultDetailRowWidth
-	}
+	targetWidth := normalizeWidth(maxWidth, defaultDetailRowWidth)
 	valueWidth := targetWidth - detailNonValueWidth
 	if valueWidth < minDetailValueWidth {
 		valueWidth = minDetailValueWidth
@@ -148,6 +129,22 @@ func detailValueWidth(maxWidth int) int {
 	}
 
 	return valueWidth
+}
+
+func normalizeWidth(value int, fallback int) int {
+	if value <= 0 {
+		return fallback
+	}
+
+	return value
+}
+
+func formatOccurrences(occurrences *uint64) string {
+	if occurrences == nil {
+		return "unknown"
+	}
+
+	return fmt.Sprintf("%d", *occurrences)
 }
 
 func shouldIncludeMainErrorLine(detail app.IssueDetail) bool {

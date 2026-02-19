@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kevinsheth/rollbaz/internal/config"
 	"github.com/kevinsheth/rollbaz/internal/domain"
@@ -380,6 +381,46 @@ func TestRunWithProgress(t *testing.T) {
 	value, err = runWithProgress("human", "test", func() (int, error) { return 7, nil })
 	if err != nil || value != 7 {
 		t.Fatalf("runWithProgress(human) = %d, err=%v", value, err)
+	}
+}
+
+func TestParseIssueFilters(t *testing.T) {
+	tests := []struct {
+		name    string
+		flags   rootFlags
+		wantErr bool
+	}{
+		{name: "valid rfc3339 and counts", flags: rootFlags{Environment: "production", Status: "active", Since: "2026-02-19T10:00:00Z", Until: "2026-02-19T12:00:00Z", MinOccurrences: "5", MaxOccurrences: "9"}},
+		{name: "valid unix seconds", flags: rootFlags{Since: "1771495200"}},
+		{name: "negative unix seconds", flags: rootFlags{Since: "-1"}, wantErr: true},
+		{name: "invalid since", flags: rootFlags{Since: "not-a-time"}, wantErr: true},
+		{name: "invalid min occurrences", flags: rootFlags{MinOccurrences: "x"}, wantErr: true},
+		{name: "since after until", flags: rootFlags{Since: "2026-02-19T13:00:00Z", Until: "2026-02-19T12:00:00Z"}, wantErr: true},
+		{name: "min greater than max", flags: rootFlags{MinOccurrences: "10", MaxOccurrences: "9"}, wantErr: true},
+	}
+
+	for _, tc := range tests {
+		filters, err := parseIssueFilters(tc.flags)
+		if tc.wantErr {
+			if err == nil {
+				t.Fatalf("%s: expected error", tc.name)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", tc.name, err)
+		}
+		if tc.flags.Environment != "" && filters.Environment != tc.flags.Environment {
+			t.Fatalf("%s: environment mismatch", tc.name)
+		}
+	}
+}
+
+func TestParseFilterTime(t *testing.T) {
+	now := time.Unix(1771495200, 0).UTC()
+	parsed, err := parseFilterTime("1771495200")
+	if err != nil || parsed == nil || !parsed.Equal(now) {
+		t.Fatalf("parseFilterTime(unix) = %v, %v", parsed, err)
 	}
 }
 

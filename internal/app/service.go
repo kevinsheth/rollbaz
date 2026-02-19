@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/kevinsheth/rollbaz/internal/domain"
 	"github.com/kevinsheth/rollbaz/internal/rollbar"
@@ -47,42 +49,41 @@ type IssueDetail struct {
 	InstanceRaw json.RawMessage       `json:"instance_raw,omitempty"`
 }
 
-func (s *Service) Active(ctx context.Context, limit int) ([]IssueSummary, error) {
+type IssueFilters struct {
+	Environment    string
+	Status         string
+	Since          *time.Time
+	Until          *time.Time
+	MinOccurrences *uint64
+	MaxOccurrences *uint64
+}
+
+func (s *Service) Active(ctx context.Context, limit int, filters IssueFilters) ([]IssueSummary, error) {
 	items, err := s.api.ListActiveItems(ctx, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list active items: %w", err)
 	}
+	items = filterItems(items, filters)
 
 	return mapSummaries(items), nil
 }
 
-func (s *Service) Recent(ctx context.Context, limit int) ([]IssueSummary, error) {
+func (s *Service) Recent(ctx context.Context, limit int, filters IssueFilters) ([]IssueSummary, error) {
 	items, err := s.api.ListItems(ctx, "active", 1)
 	if err != nil {
 		return nil, fmt.Errorf("list recent items: %w", err)
 	}
+	items = filterItems(items, filters)
 
 	sort.SliceStable(items, func(i int, j int) bool {
-		leftTS := uint64(0)
-		if items[i].LastOccurrenceTimestamp != nil {
-			leftTS = *items[i].LastOccurrenceTimestamp
-		}
-		rightTS := uint64(0)
-		if items[j].LastOccurrenceTimestamp != nil {
-			rightTS = *items[j].LastOccurrenceTimestamp
-		}
+		leftTS := uint64Value(items[i].LastOccurrenceTimestamp)
+		rightTS := uint64Value(items[j].LastOccurrenceTimestamp)
 		if leftTS != rightTS {
 			return leftTS > rightTS
 		}
 
-		leftOccurrence := uint64(0)
-		if items[i].LastOccurrenceID != nil {
-			leftOccurrence = *items[i].LastOccurrenceID
-		}
-		rightOccurrence := uint64(0)
-		if items[j].LastOccurrenceID != nil {
-			rightOccurrence = *items[j].LastOccurrenceID
-		}
+		leftOccurrence := uint64Value(items[i].LastOccurrenceID)
+		rightOccurrence := uint64Value(items[j].LastOccurrenceID)
 
 		return leftOccurrence > rightOccurrence
 	})
@@ -138,6 +139,100 @@ func mapSummaries(items []rollbar.Item) []IssueSummary {
 	return summaries
 }
 
+func filterItems(items []rollbar.Item, filters IssueFilters) []rollbar.Item {
+	environment := strings.TrimSpace(filters.Environment)
+	status := strings.TrimSpace(filters.Status)
+	if !hasIssueFilters(environment, status, filters) {
+		return items
+	}
+
+	sinceUnix, untilUnix := unixBounds(filters)
+
+	filtered := make([]rollbar.Item, 0, len(items))
+	for _, item := range items {
+		if !matchesTextFilter(strings.TrimSpace(item.Environment), environment) {
+			continue
+		}
+		if !matchesTextFilter(strings.TrimSpace(item.Status), status) {
+			continue
+		}
+		if !matchesTimeFilter(item.LastOccurrenceTimestamp, sinceUnix, untilUnix) {
+			continue
+		}
+		if !matchesOccurrenceFilter(item, filters.MinOccurrences, filters.MaxOccurrences) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+
+	return filtered
+}
+
+func hasIssueFilters(environment string, status string, filters IssueFilters) bool {
+	return environment != "" || status != "" || filters.Since != nil || filters.Until != nil || filters.MinOccurrences != nil || filters.MaxOccurrences != nil
+}
+
+func unixBounds(filters IssueFilters) (*int64, *int64) {
+	var sinceUnix *int64
+	if filters.Since != nil {
+		value := filters.Since.Unix()
+		sinceUnix = &value
+	}
+
+	var untilUnix *int64
+	if filters.Until != nil {
+		value := filters.Until.Unix()
+		untilUnix = &value
+	}
+
+	return sinceUnix, untilUnix
+}
+
+func matchesTextFilter(value string, filter string) bool {
+	if filter == "" {
+		return true
+	}
+
+	return strings.EqualFold(value, filter)
+}
+
+func matchesTimeFilter(timestamp *uint64, sinceUnix *int64, untilUnix *int64) bool {
+	if sinceUnix == nil && untilUnix == nil {
+		return true
+	}
+	if timestamp == nil {
+		return false
+	}
+	if *timestamp > math.MaxInt64 {
+		return false
+	}
+
+	timestampUnix := int64(*timestamp)
+	if sinceUnix != nil && timestampUnix < *sinceUnix {
+		return false
+	}
+	if untilUnix != nil && timestampUnix > *untilUnix {
+		return false
+	}
+
+	return true
+}
+
+func matchesOccurrenceFilter(item rollbar.Item, minOccurrences *uint64, maxOccurrences *uint64) bool {
+	occurrences := uint64Value(item.TotalOccurrences)
+	if occurrences == 0 {
+		occurrences = uint64Value(item.Occurrences)
+	}
+	if minOccurrences != nil && occurrences < *minOccurrences {
+		return false
+	}
+	if maxOccurrences != nil && occurrences > *maxOccurrences {
+		return false
+	}
+
+	return true
+}
+
 func mapSummary(item rollbar.Item) IssueSummary {
 	occurrences := item.TotalOccurrences
 	if occurrences == nil {
@@ -154,4 +249,12 @@ func mapSummary(item rollbar.Item) IssueSummary {
 		Occurrences:             occurrences,
 		Raw:                     item.Raw,
 	}
+}
+
+func uint64Value(value *uint64) uint64 {
+	if value == nil {
+		return 0
+	}
+
+	return *value
 }
