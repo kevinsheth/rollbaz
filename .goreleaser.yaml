@@ -39,3 +39,15 @@ release:
   github:
     owner: kevinsheth
     name: rollbaz
+
+brews:
+  - name: rollbaz
+    repository:
+      owner: kevinsheth
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/kevinsheth/rollbaz
+    description: Fast Rollbar triage from your terminal
+    test: |
+      system "#{bin}/rollbaz", "--help"

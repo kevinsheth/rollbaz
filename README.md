@@ -4,6 +4,13 @@ Fast CLI for Rollbar triage without opening Rollbar.
 
 ## Install
 
+Install with Homebrew (recommended):
+
+```bash
+brew tap kevinsheth/tap
+brew install rollbaz
+```
+
 Download a prebuilt binary from GitHub Releases:
 
 1. Open `https://github.com/kevinsheth/rollbaz/releases`
@@ -112,6 +119,8 @@ Releases are automated with Release Please + GoReleaser.
 6. The `release` workflow runs GoReleaser and publishes cross-platform binaries to GitHub Releases.
 
 If you need to force a specific version, run the `release-please` workflow manually and set `release_as`.
+
+Maintainership setup: set `HOMEBREW_TAP_GITHUB_TOKEN` in this repo's Actions secrets so GoReleaser can update `kevinsheth/homebrew-tap`.
 
 ```bash
 # optional: force a release version from GitHub Actions workflow_dispatch
