@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -144,7 +145,7 @@ func formatOccurrences(occurrences *uint64) string {
 		return "unknown"
 	}
 
-	return fmt.Sprintf("%d", *occurrences)
+	return strconv.FormatUint(*occurrences, 10)
 }
 
 func shouldIncludeMainErrorLine(detail app.IssueDetail) bool {

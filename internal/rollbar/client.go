@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -125,7 +126,7 @@ func (c *Client) ListItems(ctx context.Context, status string, page int) ([]Item
 		params = append(params, "status="+url.QueryEscape(status))
 	}
 	if page > 0 {
-		params = append(params, "page="+fmt.Sprintf("%d", page))
+		params = append(params, "page="+strconv.Itoa(page))
 	}
 	if len(params) > 0 {
 		query += "?" + strings.Join(params, "&")
