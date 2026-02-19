@@ -202,11 +202,28 @@ func newProjectNextCmd() *cobra.Command {
 }
 
 func newProjectRemoveCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "remove <name>",
+	removeAll := false
+	removeCmd := &cobra.Command{
+		Use:   "remove [name]",
 		Short: "Remove configured project",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if removeAll {
+				if len(args) > 0 {
+					return errors.New("cannot use --all with a project name")
+				}
+				if err := withConfigStore(func(store *config.Store) error {
+					return store.RemoveAllProjects()
+				}); err != nil {
+					return fmt.Errorf("remove projects: %w", err)
+				}
+				return nil
+			}
+
+			if len(args) == 0 {
+				return errors.New("specify a project name or use --all")
+			}
+
 			if err := withConfigStore(func(store *config.Store) error {
 				return store.RemoveProject(args[0])
 			}); err != nil {
@@ -215,6 +232,9 @@ func newProjectRemoveCmd() *cobra.Command {
 			return nil
 		},
 	}
+	removeCmd.Flags().BoolVar(&removeAll, "all", false, "Remove all configured projects and tokens")
+
+	return removeCmd
 }
 
 func runActive(parent context.Context, flags rootFlags) error {

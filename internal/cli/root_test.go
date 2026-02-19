@@ -166,6 +166,59 @@ func TestProjectCommandsUseNextRemove(t *testing.T) {
 	runRootCommand(t, "project", "remove", "beta")
 }
 
+func TestProjectRemoveAll(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	store := config.NewStoreAtPath(configPath)
+	if err := store.AddProject("alpha", "t1"); err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	if err := store.AddProject("beta", "t2"); err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+
+	restoreStore := overrideConfigStore(func() (*config.Store, error) {
+		return store, nil
+	})
+	defer restoreStore()
+
+	runRootCommand(t, "project", "remove", "--all")
+
+	file, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if file.ActiveProject != "" {
+		t.Fatalf("ActiveProject = %q, want empty", file.ActiveProject)
+	}
+	if len(file.Projects) != 0 {
+		t.Fatalf("Projects length = %d, want 0", len(file.Projects))
+	}
+}
+
+func TestProjectRemoveValidation(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	store := config.NewStoreAtPath(configPath)
+
+	restoreStore := overrideConfigStore(func() (*config.Store, error) {
+		return store, nil
+	})
+	defer restoreStore()
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"project", "remove"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "specify a project name or use --all") {
+		t.Fatalf("expected missing-args remove error, got %v", err)
+	}
+
+	cmd = NewRootCmd()
+	cmd.SetArgs([]string{"project", "remove", "alpha", "--all"})
+	err = cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "cannot use --all with a project name") {
+		t.Fatalf("expected mixed remove args/flag error, got %v", err)
+	}
+}
+
 func TestRootCommandDefaultRunsActive(t *testing.T) {
 	stdout := setupServerAndStdout(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
