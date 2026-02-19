@@ -1,6 +1,9 @@
 name: release-please
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       release_as:
@@ -18,13 +21,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  release-please:
+  open-release-pr:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - name: Run release-please
+      - name: Open or update release PR
         uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           release-type: go
           skip-github-release: true
           release-as: ${{ github.event.inputs.release_as }}
+
+  finalize-release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Finalize merged release PR
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          release-type: go
+          skip-github-pull-request: true
