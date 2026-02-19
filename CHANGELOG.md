@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/kevinsheth/rollbaz/compare/v0.1.3...v0.1.4) (2026-02-19)
+
+
+### Bug Fixes
+
+* **ci:** verify release PR merge commit in release-please ([#10](https://github.com/kevinsheth/rollbaz/issues/10)) ([c10b263](https://github.com/kevinsheth/rollbaz/commit/c10b2630b53da8c92acf2de1637a3f2b2b0607a5))
+
 ## [0.1.3](https://github.com/kevinsheth/rollbaz/compare/v0.1.2...v0.1.3) (2026-02-19)
 
 
