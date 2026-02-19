@@ -352,6 +352,8 @@ func TestTerminalRenderWidth(t *testing.T) {
 }
 
 func TestRunWithProgress(t *testing.T) {
+	t.Setenv("CI", "")
+
 	originalStdout := stdoutWriter
 	originalIsTerminal := isTerminal
 	originalGetSize := getTerminalSize
