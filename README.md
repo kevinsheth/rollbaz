@@ -121,10 +121,6 @@ Releases are automated with Release Please + GoReleaser.
 
 If you need to force a specific version, run the `release-please` workflow manually and set `release_as`.
 
-Maintainership setup:
-- `HOMEBREW_TAP_GITHUB_TOKEN` so GoReleaser can update `kevinsheth/homebrew-tap`.
-- `RELEASE_PLEASE_TOKEN` (classic or fine-grained PAT with contents + pull requests write on this repo) so release-please PR branches trigger normal CI checks.
-
 ```bash
 # optional: force a release version from GitHub Actions workflow_dispatch
 # release_as: 1.2.3
