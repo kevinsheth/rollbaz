@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/kevinsheth/rollbaz/compare/v0.1.2...v0.1.3) (2026-02-19)
+
+
+### Bug Fixes
+
+* **ci:** remove unsupported release-please package-name input ([#6](https://github.com/kevinsheth/rollbaz/issues/6)) ([b26d9ce](https://github.com/kevinsheth/rollbaz/commit/b26d9cea65448a694c59748d8a2b41b30444635a))
+
 ## [0.1.2](https://github.com/kevinsheth/rollbaz/compare/v0.1.1...v0.1.2) (2026-02-19)
 
 
