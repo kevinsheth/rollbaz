@@ -117,7 +117,7 @@ Releases are automated with Release Please + GoReleaser.
 3. It opens/updates a Release PR.
 4. Merge the Release PR.
 5. A `push` to `main` triggers the release-please finalize job, which tags and marks the release PR as tagged.
-6. The `release` workflow runs GoReleaser and publishes cross-platform binaries to GitHub Releases and Homebrew tap.
+6. In that same finalize run, GoReleaser publishes cross-platform binaries to GitHub Releases and updates Homebrew tap.
 
 If you need to force a specific version, run the `release-please` workflow manually and set `release_as`.
 
