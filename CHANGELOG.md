@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/kevinsheth/rollbaz/compare/v0.1.6...v0.2.0) (2026-02-19)
+
+
+### Features
+
+* **cli:** add project remove --all ([#17](https://github.com/kevinsheth/rollbaz/issues/17)) ([c1cb742](https://github.com/kevinsheth/rollbaz/commit/c1cb7421d4ac150c776fc0b7852c7e36d27f3c62))
+
 ## [0.1.6](https://github.com/kevinsheth/rollbaz/compare/v0.1.5...v0.1.6) (2026-02-19)
 
 
