@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -281,6 +282,55 @@ func TestActiveAndRecentSubcommands(t *testing.T) {
 	cmd.SetArgs([]string{"recent"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("recent command error = %v", err)
+	}
+}
+
+func TestResolveCommandRequiresConfirmation(t *testing.T) {
+	setupServerAndStdout(t, newActionSuccessHandler(t, nil))
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"resolve", "269"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "confirmation required") {
+		t.Fatalf("expected confirmation error, got %v", err)
+	}
+}
+
+func TestResolveCommandWithYes(t *testing.T) {
+	var patchPayload rollbar.ItemPatch
+	setupServerAndStdout(t, newActionSuccessHandler(t, &patchPayload))
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"resolve", "269", "--yes", "--resolved-in-version", "v1.2.3"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("resolve command error = %v", err)
+	}
+
+	if patchPayload.Status != "resolved" || patchPayload.ResolvedInVersion != "v1.2.3" {
+		t.Fatalf("unexpected patch payload: %+v", patchPayload)
+	}
+}
+
+func TestMuteCommandInvalidDuration(t *testing.T) {
+	if err := runMute(context.Background(), rootFlags{}, 269, "500ms"); err == nil {
+		t.Fatalf("expected invalid duration error")
+	}
+}
+
+func TestMuteCommandWithYesAndDuration(t *testing.T) {
+	var patchPayload rollbar.ItemPatch
+	setupServerAndStdout(t, newActionSuccessHandler(t, &patchPayload))
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"mute", "269", "--for", "2h", "--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("mute command error = %v", err)
+	}
+	if patchPayload.Status != "muted" {
+		t.Fatalf("expected muted status patch, got %+v", patchPayload)
+	}
+	if patchPayload.SnoozeExpirationInSeconds == nil || *patchPayload.SnoozeExpirationInSeconds != int64(7200) {
+		t.Fatalf("unexpected mute expiration in patch: %+v", patchPayload)
 	}
 }
 
@@ -569,6 +619,37 @@ func newSuccessHandler(t *testing.T) http.Handler {
 				t.Fatalf("unexpected query: %s", r.URL.RawQuery)
 			}
 			_, _ = fmt.Fprint(w, `{"err":0,"result":[{"id":1,"data":{"trace":{"exception":{"description":"ABORTED"}}}}]}`)
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	})
+}
+
+func newActionSuccessHandler(t *testing.T, capturedPatch *rollbar.ItemPatch) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/1/item_by_counter/269":
+			_, _ = fmt.Fprint(w, `{"err":0,"result":{"itemId":1755568172}}`)
+		case "/api/1/item/1755568172":
+			if r.Method != http.MethodPatch {
+				t.Fatalf("unexpected method for patch endpoint: %s", r.Method)
+			}
+			if capturedPatch != nil {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Fatalf("ReadAll() error = %v", err)
+				}
+				if err := json.Unmarshal(body, capturedPatch); err != nil {
+					t.Fatalf("Unmarshal() error = %v", err)
+				}
+			}
+			_, _ = fmt.Fprint(w, `{"err":0,"result":{}}`)
+		case "/api/1/item/1755568172/":
+			if r.Method != http.MethodGet {
+				t.Fatalf("unexpected method for get item endpoint: %s", r.Method)
+			}
+			_, _ = fmt.Fprint(w, `{"err":0,"result":{"id":1755568172,"project_id":766510,"counter":269,"title":"RST_STREAM","status":"active","environment":"production","total_occurrences":7}}`)
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}

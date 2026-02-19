@@ -34,6 +34,14 @@ func (f fakeAPI) GetItem(ctx context.Context, itemID domain.ItemID) (rollbar.Ite
 	return f.item, nil
 }
 
+func (f fakeAPI) UpdateItem(ctx context.Context, itemID domain.ItemID, patch rollbar.ItemPatch) error {
+	if f.err != nil {
+		return f.err
+	}
+
+	return nil
+}
+
 func (f fakeAPI) GetLatestInstance(ctx context.Context, itemID domain.ItemID) (*rollbar.ItemInstance, error) {
 	if f.err != nil {
 		return nil, f.err
@@ -189,6 +197,148 @@ func TestServiceShowWithoutInstanceOrTitle(t *testing.T) {
 	}
 	if detail.MainError != "unknown" {
 		t.Fatalf("expected unknown main error, got %q", detail.MainError)
+	}
+}
+
+type actionAPI struct {
+	resolvedID  domain.ItemID
+	item        rollbar.Item
+	resolveErr  error
+	updateErr   error
+	getItemErr  error
+	updateCalls int
+	lastPatch   rollbar.ItemPatch
+}
+
+func (a *actionAPI) ResolveItemIDByCounter(ctx context.Context, counter domain.ItemCounter) (domain.ItemID, error) {
+	if a.resolveErr != nil {
+		return 0, a.resolveErr
+	}
+
+	return a.resolvedID, nil
+}
+
+func (a *actionAPI) GetItem(ctx context.Context, itemID domain.ItemID) (rollbar.Item, error) {
+	if a.getItemErr != nil {
+		return rollbar.Item{}, a.getItemErr
+	}
+
+	return a.item, nil
+}
+
+func (a *actionAPI) UpdateItem(ctx context.Context, itemID domain.ItemID, patch rollbar.ItemPatch) error {
+	a.lastPatch = patch
+	a.updateCalls++
+	if a.updateErr != nil {
+		return a.updateErr
+	}
+
+	return nil
+}
+
+func (a *actionAPI) GetLatestInstance(ctx context.Context, itemID domain.ItemID) (*rollbar.ItemInstance, error) {
+	return nil, nil
+}
+
+func (a *actionAPI) ListActiveItems(ctx context.Context, limit int) ([]rollbar.Item, error) {
+	return nil, nil
+}
+
+func (a *actionAPI) ListItems(ctx context.Context, status string, page int) ([]rollbar.Item, error) {
+	return nil, nil
+}
+
+func TestServiceResolve(t *testing.T) {
+	t.Parallel()
+
+	api := &actionAPI{
+		resolvedID: 99,
+		item:       rollbar.Item{ID: 99, Counter: 7, Status: "resolved", Title: "x"},
+	}
+	service := NewService(api)
+
+	result, err := service.Resolve(context.Background(), 7, "v1.2.3")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if result.Action != "resolved" || result.Issue.Status != "resolved" {
+		t.Fatalf("unexpected resolve result: %+v", result)
+	}
+	if api.updateCalls != 1 {
+		t.Fatalf("expected one update call, got %d", api.updateCalls)
+	}
+	if api.lastPatch.Status != "resolved" || api.lastPatch.ResolvedInVersion != "v1.2.3" {
+		t.Fatalf("unexpected resolve patch: %+v", api.lastPatch)
+	}
+}
+
+func TestServiceReopen(t *testing.T) {
+	t.Parallel()
+
+	api := &actionAPI{
+		resolvedID: 99,
+		item:       rollbar.Item{ID: 99, Counter: 8, Status: "active", Title: "x"},
+	}
+	service := NewService(api)
+
+	result, err := service.Reopen(context.Background(), 8)
+	if err != nil {
+		t.Fatalf("Reopen() error = %v", err)
+	}
+	if result.Action != "reopened" || result.Issue.Status != "active" {
+		t.Fatalf("unexpected reopen result: %+v", result)
+	}
+	if api.lastPatch.Status != "active" {
+		t.Fatalf("unexpected reopen patch: %+v", api.lastPatch)
+	}
+}
+
+func TestServiceMute(t *testing.T) {
+	t.Parallel()
+
+	duration := int64(3600)
+	api := &actionAPI{
+		resolvedID: 99,
+		item:       rollbar.Item{ID: 99, Counter: 9, Status: "muted", Title: "x"},
+	}
+	service := NewService(api)
+
+	result, err := service.Mute(context.Background(), 9, &duration)
+	if err != nil {
+		t.Fatalf("Mute() error = %v", err)
+	}
+	if result.Action != "muted" || result.Issue.Status != "muted" {
+		t.Fatalf("unexpected mute result: %+v", result)
+	}
+	if api.lastPatch.Status != "muted" || api.lastPatch.SnoozeExpirationInSeconds == nil || *api.lastPatch.SnoozeExpirationInSeconds != duration {
+		t.Fatalf("unexpected mute patch: %+v", api.lastPatch)
+	}
+	if api.lastPatch.SnoozeEnabled == nil || !*api.lastPatch.SnoozeEnabled {
+		t.Fatalf("expected snooze_enabled true, got %+v", api.lastPatch)
+	}
+}
+
+func TestServiceItemActionsErrors(t *testing.T) {
+	t.Parallel()
+
+	api := &actionAPI{resolvedID: 99, item: rollbar.Item{ID: 99, Counter: 7}}
+	service := NewService(api)
+
+	api.resolveErr = errors.New("resolve")
+	if _, err := service.Resolve(context.Background(), 7, ""); err == nil {
+		t.Fatalf("expected resolve id error")
+	}
+
+	api.resolveErr = nil
+	api.updateErr = errors.New("update")
+	if _, err := service.Reopen(context.Background(), 7); err == nil {
+		t.Fatalf("expected update error")
+	}
+
+	api.updateErr = nil
+	api.getItemErr = errors.New("get")
+	if _, err := service.Mute(context.Background(), 7, nil); err == nil {
+		t.Fatalf("expected get item error")
 	}
 }
 

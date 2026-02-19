@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jedib0t/go-pretty/v6/progress"
@@ -25,6 +27,7 @@ type rootFlags struct {
 	Format         string
 	Project        string
 	Token          string
+	Yes            bool
 	Limit          int
 	Environment    string
 	Status         string
@@ -41,6 +44,7 @@ var (
 	getTerminalSize  func(int) (int, int, error) = term.GetSize
 	stdoutWriter     io.Writer                   = os.Stdout
 	stderrWriter     io.Writer                   = os.Stderr
+	stdinReader      io.Reader                   = os.Stdin
 )
 
 const (
@@ -65,6 +69,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&flags.Format, "format", "human", "Output format: human or json")
 	cmd.PersistentFlags().StringVar(&flags.Project, "project", "", "Configured project name")
 	cmd.PersistentFlags().StringVar(&flags.Token, "token", "", "Rollbar project token (overrides configured project token)")
+	cmd.PersistentFlags().BoolVar(&flags.Yes, "yes", false, "Skip confirmation prompts for write commands")
 	cmd.PersistentFlags().IntVar(&flags.Limit, "limit", 10, "Maximum number of issues to show")
 	cmd.PersistentFlags().StringVar(&flags.Environment, "env", "", "Filter by environment")
 	cmd.PersistentFlags().StringVar(&flags.Status, "status", "", "Filter by status")
@@ -76,6 +81,9 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newActiveCmd(flags))
 	cmd.AddCommand(newRecentCmd(flags))
 	cmd.AddCommand(newShowCmd(flags))
+	cmd.AddCommand(newResolveCmd(flags))
+	cmd.AddCommand(newReopenCmd(flags))
+	cmd.AddCommand(newMuteCmd(flags))
 	cmd.AddCommand(newProjectCmd())
 
 	return cmd
@@ -117,13 +125,78 @@ func newShowCmd(flags *rootFlags) *cobra.Command {
 		Short: "Show details for one item counter",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			parsedCounter, err := strconv.ParseUint(args[0], 10, 64)
+			counter, err := parseItemCounter(args[0])
 			if err != nil {
-				return fmt.Errorf("parse item counter: %w", err)
+				return err
 			}
-			return runShow(cmd.Context(), *flags, domain.ItemCounter(parsedCounter))
+			return runShow(cmd.Context(), *flags, counter)
 		},
 	}
+}
+
+func newResolveCmd(flags *rootFlags) *cobra.Command {
+	resolvedVersion := ""
+	resolveCmd := &cobra.Command{
+		Use:   "resolve <item-counter>",
+		Short: "Resolve an issue",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			counter, err := parseItemCounter(args[0])
+			if err != nil {
+				return err
+			}
+
+			return runResolve(cmd.Context(), *flags, counter, resolvedVersion)
+		},
+	}
+	resolveCmd.Flags().StringVar(&resolvedVersion, "resolved-in-version", "", "Version to store when resolving")
+
+	return resolveCmd
+}
+
+func newReopenCmd(flags *rootFlags) *cobra.Command {
+	return &cobra.Command{
+		Use:   "reopen <item-counter>",
+		Short: "Reopen a resolved or muted issue",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			counter, err := parseItemCounter(args[0])
+			if err != nil {
+				return err
+			}
+
+			return runReopen(cmd.Context(), *flags, counter)
+		},
+	}
+}
+
+func newMuteCmd(flags *rootFlags) *cobra.Command {
+	muteFor := ""
+	muteCmd := &cobra.Command{
+		Use:   "mute <item-counter>",
+		Short: "Mute an issue",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			counter, err := parseItemCounter(args[0])
+			if err != nil {
+				return err
+			}
+
+			return runMute(cmd.Context(), *flags, counter, muteFor)
+		},
+	}
+	muteCmd.Flags().StringVar(&muteFor, "for", "", "Mute duration (examples: 30m, 2h, 24h)")
+
+	return muteCmd
+}
+
+func parseItemCounter(value string) (domain.ItemCounter, error) {
+	parsedCounter, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse item counter: %w", err)
+	}
+
+	return domain.ItemCounter(parsedCounter), nil
 }
 
 func newProjectCmd() *cobra.Command {
@@ -367,6 +440,111 @@ func runShow(parent context.Context, flags rootFlags, counter domain.ItemCounter
 	return printOutput(flags.Format, output.RenderIssueDetailHumanWithWidth(detail, terminalRenderWidth()), jsonPayload)
 }
 
+func runResolve(parent context.Context, flags rootFlags, counter domain.ItemCounter, resolvedVersion string) error {
+	return runIssueAction(parent, flags, "resolve", counter, func(ctx context.Context, service *app.Service) (app.ItemActionResult, error) {
+		return service.Resolve(ctx, counter, resolvedVersion)
+	})
+}
+
+func runReopen(parent context.Context, flags rootFlags, counter domain.ItemCounter) error {
+	return runIssueAction(parent, flags, "reopen", counter, func(ctx context.Context, service *app.Service) (app.ItemActionResult, error) {
+		return service.Reopen(ctx, counter)
+	})
+}
+
+func runMute(parent context.Context, flags rootFlags, counter domain.ItemCounter, muteFor string) error {
+	durationSeconds, err := parseMuteDuration(muteFor)
+	if err != nil {
+		return err
+	}
+
+	return runIssueAction(parent, flags, "mute", counter, func(ctx context.Context, service *app.Service) (app.ItemActionResult, error) {
+		return service.Mute(ctx, counter, durationSeconds)
+	})
+}
+
+func parseMuteDuration(value string) (*int64, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, nil
+	}
+
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return nil, fmt.Errorf("parse --for: %w", err)
+	}
+	if parsed < time.Second {
+		return nil, errors.New("--for must be at least 1s")
+	}
+
+	seconds := int64(parsed / time.Second)
+	return &seconds, nil
+}
+
+func runIssueAction(parent context.Context, flags rootFlags, action string, counter domain.ItemCounter, execute func(context.Context, *app.Service) (app.ItemActionResult, error)) error {
+	if err := confirmWrite(flags, action, counter); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
+
+	service, token, err := buildService(flags)
+	if err != nil {
+		return err
+	}
+
+	result, err := runWithProgress(flags.Format, "Updating issue", func() (app.ItemActionResult, error) {
+		return execute(ctx, service)
+	})
+	if err != nil {
+		return sanitizeError(err, token)
+	}
+
+	human := fmt.Sprintf("%s issue %s\n\n%s", result.Action, result.Issue.Counter.String(), output.RenderIssueListHumanWithWidth([]app.IssueSummary{result.Issue}, terminalRenderWidth()))
+	jsonPayload := redact.Value(map[string]any{"action": result.Action, "issue": result.Issue}, token)
+
+	return printOutput(flags.Format, human, jsonPayload)
+}
+
+func confirmWrite(flags rootFlags, action string, counter domain.ItemCounter) error {
+	if flags.Yes {
+		return nil
+	}
+	if flags.Format != "human" {
+		return errors.New("confirmation required for write operation; rerun with --yes")
+	}
+	if !canPromptConfirmation() {
+		return errors.New("confirmation required for write operation; rerun with --yes")
+	}
+
+	_, _ = fmt.Fprintf(stdoutWriter, "Confirm %s issue %s? [y/N]: ", action, counter.String())
+	reader := bufio.NewReader(stdinReader)
+	line, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("read confirmation: %w", err)
+	}
+
+	value := strings.TrimSpace(strings.ToLower(line))
+	if value != "y" && value != "yes" {
+		return errors.New("operation cancelled")
+	}
+
+	return nil
+}
+
+func canPromptConfirmation() bool {
+	stdoutFile, ok := stdoutFile()
+	if !ok || !isTerminal(int(stdoutFile.Fd())) {
+		return false
+	}
+	input, ok := stdinFile()
+	if !ok || !isTerminal(int(input.Fd())) {
+		return false
+	}
+
+	return true
+}
+
 func printOutput(format string, human string, payload any) error {
 	switch format {
 	case "human":
@@ -598,6 +776,15 @@ func terminalRenderWidth() int {
 
 func stdoutFile() (*os.File, bool) {
 	file, ok := stdoutWriter.(*os.File)
+	if !ok {
+		return nil, false
+	}
+
+	return file, true
+}
+
+func stdinFile() (*os.File, bool) {
+	file, ok := stdinReader.(*os.File)
 	if !ok {
 		return nil, false
 	}

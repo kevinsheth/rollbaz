@@ -1,6 +1,7 @@
 package rollbar
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -94,6 +95,32 @@ func (c *Client) GetItem(ctx context.Context, itemID domain.ItemID) (Item, error
 	item.Raw = append(json.RawMessage(nil), raw...)
 
 	return item, nil
+}
+
+func (c *Client) UpdateItem(ctx context.Context, itemID domain.ItemID, patch ItemPatch) error {
+	body, err := json.Marshal(patch)
+	if err != nil {
+		return c.wrap(err, "encode update item request")
+	}
+
+	raw, err := c.doPatch(ctx, "/item/"+itemID.String(), body, "update item")
+	if err != nil {
+		return err
+	}
+
+	var envelope apiEnvelope
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return c.wrap(err, "decode update item envelope")
+	}
+	if envelope.Err != 0 {
+		message := envelope.Message
+		if message == "" {
+			message = "unknown error from Rollbar"
+		}
+		return c.wrap(errors.New(message), "rollbar update item")
+	}
+
+	return nil
 }
 
 func (c *Client) ListActiveItems(ctx context.Context, limit int) ([]Item, error) {
@@ -264,17 +291,28 @@ func (c *Client) getResult(ctx context.Context, endpointPath string, op string) 
 }
 
 func (c *Client) doGet(ctx context.Context, endpointPath string, op string) ([]byte, error) {
+	return c.doRequest(ctx, http.MethodGet, endpointPath, nil, "", op)
+}
+
+func (c *Client) doPatch(ctx context.Context, endpointPath string, body []byte, op string) ([]byte, error) {
+	return c.doRequest(ctx, http.MethodPatch, endpointPath, bytes.NewReader(body), "application/json", op)
+}
+
+func (c *Client) doRequest(ctx context.Context, method string, endpointPath string, requestBody io.Reader, contentType string, op string) ([]byte, error) {
 	requestURL, err := buildURL(c.baseURL, endpointPath)
 	if err != nil {
 		return nil, c.wrap(err, "build "+op+" URL")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	req, err := http.NewRequestWithContext(ctx, method, requestURL, requestBody)
 	if err != nil {
 		return nil, c.wrap(err, "build "+op+" request")
 	}
 
 	req.Header.Set("X-Rollbar-Access-Token", c.accessToken)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
 
 	response, err := c.http.Do(req)
 	if err != nil {
@@ -289,12 +327,12 @@ func (c *Client) doGet(ctx context.Context, endpointPath string, op string) ([]b
 		return nil, c.wrap(fmt.Errorf("status %d: %s", response.StatusCode, strings.TrimSpace(string(limited))), op+" returned non-success status")
 	}
 
-	body, err := io.ReadAll(response.Body)
+	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, c.wrap(err, "read "+op+" response")
 	}
 
-	return body, nil
+	return responseBody, nil
 }
 
 func buildURL(baseURL string, endpointPath string) (string, error) {
