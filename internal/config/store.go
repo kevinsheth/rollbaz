@@ -133,6 +133,10 @@ func (s *Store) RemoveProject(name string) error {
 	return s.Save(file)
 }
 
+func (s *Store) RemoveAllProjects() error {
+	return s.Save(File{})
+}
+
 func (s *Store) UseProject(name string) error {
 	file, err := s.Load()
 	if err != nil {

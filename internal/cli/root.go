@@ -202,19 +202,56 @@ func newProjectNextCmd() *cobra.Command {
 }
 
 func newProjectRemoveCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "remove <name>",
+	removeAll := false
+	removeCmd := &cobra.Command{
+		Use:   "remove [name]",
 		Short: "Remove configured project",
-		Args:  cobra.ExactArgs(1),
+		Args: func(cmd *cobra.Command, args []string) error {
+			return validateProjectRemoveArgs(removeAll, cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := withConfigStore(func(store *config.Store) error {
-				return store.RemoveProject(args[0])
-			}); err != nil {
-				return fmt.Errorf("remove project: %w", err)
-			}
-			return nil
+			return runProjectRemove(removeAll, args)
 		},
 	}
+	removeCmd.Flags().BoolVar(&removeAll, "all", false, "Remove all configured projects and tokens")
+
+	return removeCmd
+}
+
+func validateProjectRemoveArgs(removeAll bool, cmd *cobra.Command, args []string) error {
+	if removeAll {
+		if len(args) > 0 {
+			return errors.New("cannot use --all with a project name")
+		}
+		return nil
+	}
+	if len(args) == 0 {
+		return errors.New("specify a project name or use --all")
+	}
+	if len(args) > 1 {
+		return cobra.MaximumNArgs(1)(cmd, args)
+	}
+
+	return nil
+}
+
+func runProjectRemove(removeAll bool, args []string) error {
+	if removeAll {
+		if err := withConfigStore(func(store *config.Store) error {
+			return store.RemoveAllProjects()
+		}); err != nil {
+			return fmt.Errorf("remove projects: %w", err)
+		}
+		return nil
+	}
+
+	if err := withConfigStore(func(store *config.Store) error {
+		return store.RemoveProject(args[0])
+	}); err != nil {
+		return fmt.Errorf("remove project: %w", err)
+	}
+
+	return nil
 }
 
 func runActive(parent context.Context, flags rootFlags) error {
