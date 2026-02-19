@@ -20,7 +20,7 @@ func TestResolveItemIDByCounterSupportsRedirectShape(t *testing.T) {
 		}
 		_, _ = fmt.Fprint(w, `{"err":0,"result":{"itemId":1755568172}}`)
 	}))
-	defer server.Close()
+	t.Cleanup(server.Close)
 
 	client := newTestClient(t, server.URL+"/api/1")
 	itemID, err := client.ResolveItemIDByCounter(context.Background(), domain.ItemCounter(269))
@@ -36,12 +36,9 @@ func TestResolveItemIDByCounterSupportsRedirectShape(t *testing.T) {
 func TestResolveItemIDByCounterSupportsItemShape(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprint(w, `{"err":0,"result":{"id":99}}`)
-	}))
-	defer server.Close()
-
-	client := newTestClient(t, server.URL)
+	})
 	itemID, err := client.ResolveItemIDByCounter(context.Background(), domain.ItemCounter(269))
 	if err != nil {
 		t.Fatalf("ResolveItemIDByCounter() error = %v", err)
@@ -55,12 +52,9 @@ func TestResolveItemIDByCounterSupportsItemShape(t *testing.T) {
 func TestResolveItemIDByCounterMissingID(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprint(w, `{"err":0,"result":{}}`)
-	}))
-	defer server.Close()
-
-	client := newTestClient(t, server.URL)
+	})
 	_, err := client.ResolveItemIDByCounter(context.Background(), domain.ItemCounter(1))
 	if err == nil {
 		t.Fatalf("expected error")
@@ -70,15 +64,12 @@ func TestResolveItemIDByCounterMissingID(t *testing.T) {
 func TestGetItem(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Rollbar-Access-Token") != "token" {
 			t.Fatalf("missing access token header")
 		}
 		_, _ = fmt.Fprint(w, `{"err":0,"result":{"id":1755568172,"project_id":766510,"counter":269,"title":"RST_STREAM","status":"active","environment":"production","total_occurrences":7}}`)
-	}))
-	defer server.Close()
-
-	client := newTestClient(t, server.URL)
+	})
 	item, err := client.GetItem(context.Background(), domain.ItemID(1755568172))
 	if err != nil {
 		t.Fatalf("GetItem() error = %v", err)
@@ -132,12 +123,9 @@ func TestGetLatestInstanceSupportsListAndWrapped(t *testing.T) {
 func TestGetResultReturnsEnvelopeError(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprint(w, `{"err":1,"message":"denied"}`)
-	}))
-	defer server.Close()
-
-	client := newTestClient(t, server.URL)
+	})
 	_, err := client.GetItem(context.Background(), domain.ItemID(1))
 	if err == nil {
 		t.Fatalf("expected error")
@@ -147,13 +135,10 @@ func TestGetResultReturnsEnvelopeError(t *testing.T) {
 func TestGetItemNonSuccessStatus(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
 		_, _ = fmt.Fprint(w, `bad gateway`)
-	}))
-	defer server.Close()
-
-	client := newTestClient(t, server.URL)
+	})
 	_, err := client.GetItem(context.Background(), domain.ItemID(1))
 	if err == nil {
 		t.Fatalf("expected error")
@@ -163,12 +148,9 @@ func TestGetItemNonSuccessStatus(t *testing.T) {
 func TestGetLatestInstanceReturnsNilForEmptyList(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprint(w, `{"err":0,"result":[]}`)
-	}))
-	defer server.Close()
-
-	client := newTestClient(t, server.URL)
+	})
 	instance, err := client.GetLatestInstance(context.Background(), domain.ItemID(1))
 	if err != nil {
 		t.Fatalf("GetLatestInstance() error = %v", err)
@@ -182,12 +164,9 @@ func TestGetLatestInstanceReturnsNilForEmptyList(t *testing.T) {
 func TestGetItemMissingResult(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprint(w, `{"err":0,"result":null}`)
-	}))
-	defer server.Close()
-
-	client := newTestClient(t, server.URL)
+	})
 	_, err := client.GetItem(context.Background(), domain.ItemID(1))
 	if err == nil {
 		t.Fatalf("expected error")
@@ -256,6 +235,128 @@ func TestParseInstancesInvalid(t *testing.T) {
 	}
 }
 
+func TestListActiveItems(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/reports/top_active_items" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_, _ = fmt.Fprint(w, `{"err":0,"result":[{"item":{"id":1,"counter":2,"title":"x","status":"active","environment":"prod","occurrences":3}}]}`)
+	})
+	items, err := client.ListActiveItems(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("ListActiveItems() error = %v", err)
+	}
+	if len(items) != 1 || items[0].Counter != 2 {
+		t.Fatalf("unexpected items: %+v", items)
+	}
+}
+
+func TestListActiveItemsSupportsStringItemID(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"err":0,"result":[{"item":{"id":"1","counter":2,"title":"x","status":"active","environment":"prod","occurrences":3}}]}`)
+	})
+	items, err := client.ListActiveItems(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("ListActiveItems() error = %v", err)
+	}
+	if len(items) != 1 || items[0].ID != 1 {
+		t.Fatalf("unexpected items: %+v", items)
+	}
+}
+
+func TestListActiveItemsFallbackToItemsParse(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"err":0,"result":{"items":[{"id":1,"counter":3,"title":"x"}]}}`)
+	})
+	items, err := client.ListActiveItems(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("ListActiveItems() error = %v", err)
+	}
+	if len(items) != 1 || items[0].Counter != 3 {
+		t.Fatalf("unexpected items: %+v", items)
+	}
+}
+
+func TestListItemsWrapped(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/items" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_, _ = fmt.Fprint(w, `{"err":0,"result":{"items":[{"id":1,"counter":2,"title":"x"}]}}`)
+	})
+	items, err := client.ListItems(context.Background(), "", 0)
+	if err != nil {
+		t.Fatalf("ListItems() error = %v", err)
+	}
+	if len(items) != 1 || items[0].Counter != 2 {
+		t.Fatalf("unexpected items: %+v", items)
+	}
+}
+
+func TestListItemsSupportsStringID(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"err":0,"result":{"items":[{"id":"1","counter":2,"title":"x"}]}}`)
+	})
+	items, err := client.ListItems(context.Background(), "", 0)
+	if err != nil {
+		t.Fatalf("ListItems() error = %v", err)
+	}
+	if len(items) != 1 || items[0].ID != 1 {
+		t.Fatalf("unexpected items: %+v", items)
+	}
+}
+
+func TestListItemsStatusAndPageQuery(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.RawQuery != "status=active&page=2" {
+			t.Fatalf("unexpected query: %s", r.URL.RawQuery)
+		}
+		_, _ = fmt.Fprint(w, `{"err":0,"result":[]}`)
+	})
+	if _, err := client.ListItems(context.Background(), "active", 2); err != nil {
+		t.Fatalf("ListItems() error = %v", err)
+	}
+}
+
+func TestParseItemsInvalid(t *testing.T) {
+	t.Parallel()
+
+	if _, err := parseItems([]byte(`123`)); err == nil {
+		t.Fatalf("expected parse error")
+	}
+}
+
+func TestTrimItems(t *testing.T) {
+	t.Parallel()
+
+	items := []Item{{Counter: 1}, {Counter: 2}, {Counter: 3}}
+	trimmed := trimItems(items, 2)
+	if len(trimmed) != 2 {
+		t.Fatalf("trimItems() len = %d", len(trimmed))
+	}
+}
+
+func TestWrapNil(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, "https://api.rollbar.com/api/1")
+	if client.wrap(nil, "operation") != nil {
+		t.Fatalf("wrap(nil) should be nil")
+	}
+}
+
 func newTestClient(t *testing.T, baseURL string) *Client {
 	t.Helper()
 
@@ -264,4 +365,12 @@ func newTestClient(t *testing.T, baseURL string) *Client {
 		t.Fatalf("New() error = %v", err)
 	}
 	return client
+}
+
+func newTestClientWithHandler(t *testing.T, handler func(http.ResponseWriter, *http.Request)) *Client {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(handler))
+	t.Cleanup(server.Close)
+
+	return newTestClient(t, server.URL)
 }

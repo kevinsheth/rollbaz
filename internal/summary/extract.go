@@ -7,6 +7,8 @@ var preferredErrorPaths = [][]string{
 	{"trace", "exception", "message"},
 	{"trace_chain", "0", "exception", "description"},
 	{"trace_chain", "0", "exception", "message"},
+	{"body", "trace_chain", "0", "exception", "description"},
+	{"body", "trace_chain", "0", "exception", "message"},
 	{"exception", "description"},
 	{"exception", "message"},
 	{"message", "body"},

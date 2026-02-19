@@ -36,6 +36,11 @@ var mainErrorTests = []struct {
 		data: `{"foo":"bar"}`,
 		want: "unknown",
 	},
+	{
+		name: "supports nested body trace_chain",
+		data: `{"body":{"trace_chain":[{"exception":{"message":"nested chain message"}}]}}`,
+		want: "nested chain message",
+	},
 }
 
 func TestMainError(t *testing.T) {
