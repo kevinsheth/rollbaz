@@ -144,8 +144,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Finalize merged release PR
+        id: finalize
         uses: googleapis/release-please-action@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           release-type: go
           skip-github-pull-request: true
+
+      - name: Checkout
+        if: steps.finalize.outputs.releases_created == 'true' || steps.finalize.outputs.release_created == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        if: steps.finalize.outputs.releases_created == 'true' || steps.finalize.outputs.release_created == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Publish release artifacts
+        if: steps.finalize.outputs.releases_created == 'true' || steps.finalize.outputs.release_created == 'true'
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
