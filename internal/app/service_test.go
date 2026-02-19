@@ -70,17 +70,36 @@ func TestServiceActive(t *testing.T) {
 	}
 }
 
-func TestServiceRecentSortsByTimestampThenOccurrence(t *testing.T) {
+func TestServiceRecentSortsByTimestamp(t *testing.T) {
 	t.Parallel()
 
 	ts1 := uint64(100)
 	ts2 := uint64(200)
-	o1 := uint64(10)
-	o2 := uint64(20)
 
 	service := NewService(fakeAPI{listItems: []rollbar.Item{
-		{ID: 1, Counter: 1, LastOccurrenceTimestamp: &ts1, LastOccurrenceID: &o1},
-		{ID: 2, Counter: 2, LastOccurrenceTimestamp: &ts2, LastOccurrenceID: &o2},
+		{ID: 1, Counter: 1, LastOccurrenceTimestamp: &ts1},
+		{ID: 2, Counter: 2, LastOccurrenceTimestamp: &ts2},
+	}})
+
+	issues, err := service.Recent(context.Background(), 10, IssueFilters{})
+	if err != nil {
+		t.Fatalf("Recent() error = %v", err)
+	}
+	if len(issues) < 2 || issues[0].Counter != 2 {
+		t.Fatalf("unexpected sort order: %+v", issues)
+	}
+}
+
+func TestServiceRecentSortsByTimestampThenTotalOccurrences(t *testing.T) {
+	t.Parallel()
+
+	ts := uint64(100)
+	totalLow := uint64(10)
+	totalHigh := uint64(20)
+
+	service := NewService(fakeAPI{listItems: []rollbar.Item{
+		{ID: 1, Counter: 1, LastOccurrenceTimestamp: &ts, TotalOccurrences: &totalLow},
+		{ID: 2, Counter: 2, LastOccurrenceTimestamp: &ts, TotalOccurrences: &totalHigh},
 	}})
 
 	issues, err := service.Recent(context.Background(), 10, IssueFilters{})
@@ -95,19 +114,21 @@ func TestServiceRecentSortsByTimestampThenOccurrence(t *testing.T) {
 func TestServiceRecentLimitAndOccurrenceFallback(t *testing.T) {
 	t.Parallel()
 
-	o1 := uint64(10)
-	o2 := uint64(20)
+	ts := uint64(100)
+	totalLow := uint64(10)
+	fallbackHigh := uint64(20)
+	ignoredOccurrence := uint64(999)
 
 	service := NewService(fakeAPI{listItems: []rollbar.Item{
-		{ID: 1, Counter: 1, LastOccurrenceID: &o1},
-		{ID: 2, Counter: 2, LastOccurrenceID: &o2},
+		{ID: 1, Counter: 1, LastOccurrenceTimestamp: &ts, Occurrences: &fallbackHigh},
+		{ID: 2, Counter: 2, LastOccurrenceTimestamp: &ts, TotalOccurrences: &totalLow, Occurrences: &ignoredOccurrence},
 	}})
 
 	issues, err := service.Recent(context.Background(), 1, IssueFilters{})
 	if err != nil {
 		t.Fatalf("Recent() error = %v", err)
 	}
-	if len(issues) != 1 || issues[0].Counter != 2 {
+	if len(issues) != 1 || issues[0].Counter != 1 {
 		t.Fatalf("unexpected fallback sort/limit: %+v", issues)
 	}
 }

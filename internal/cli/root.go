@@ -57,7 +57,7 @@ func NewRootCmd() *cobra.Command {
 		Short:        "Fast Rollbar triage from your terminal",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runActive(cmd.Context(), *flags)
+			return runRecent(cmd.Context(), *flags)
 		},
 	}
 	cmd.Version = version

@@ -46,7 +46,7 @@ Tokens are stored in your user config directory with strict file permissions (`0
 ## Core Commands
 
 ```bash
-rollbaz                 # default: list active issues for active project
+rollbaz                 # default: list recent active issues for active project
 rollbaz active --limit 20
 rollbaz recent --limit 20
 rollbaz show 274

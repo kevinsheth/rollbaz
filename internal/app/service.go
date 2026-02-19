@@ -82,8 +82,8 @@ func (s *Service) Recent(ctx context.Context, limit int, filters IssueFilters) (
 			return leftTS > rightTS
 		}
 
-		leftOccurrence := uint64Value(items[i].LastOccurrenceID)
-		rightOccurrence := uint64Value(items[j].LastOccurrenceID)
+		leftOccurrence := totalOccurrences(items[i])
+		rightOccurrence := totalOccurrences(items[j])
 
 		return leftOccurrence > rightOccurrence
 	})
@@ -225,10 +225,7 @@ func matchesTimeFilter(timestamp *uint64, sinceUnix *int64, untilUnix *int64) bo
 }
 
 func matchesOccurrenceFilter(item rollbar.Item, minOccurrences *uint64, maxOccurrences *uint64) bool {
-	occurrences := uint64Value(item.TotalOccurrences)
-	if occurrences == 0 {
-		occurrences = uint64Value(item.Occurrences)
-	}
+	occurrences := totalOccurrences(item)
 	if minOccurrences != nil && occurrences < *minOccurrences {
 		return false
 	}
@@ -240,11 +237,6 @@ func matchesOccurrenceFilter(item rollbar.Item, minOccurrences *uint64, maxOccur
 }
 
 func mapSummary(item rollbar.Item) IssueSummary {
-	occurrences := item.TotalOccurrences
-	if occurrences == nil {
-		occurrences = item.Occurrences
-	}
-
 	return IssueSummary{
 		ItemID:                  item.ID,
 		Counter:                 domain.ItemCounter(item.Counter),
@@ -252,9 +244,25 @@ func mapSummary(item rollbar.Item) IssueSummary {
 		Status:                  item.Status,
 		Environment:             item.Environment,
 		LastOccurrenceTimestamp: item.LastOccurrenceTimestamp,
-		Occurrences:             occurrences,
+		Occurrences:             summaryOccurrences(item),
 		Raw:                     item.Raw,
 	}
+}
+
+func summaryOccurrences(item rollbar.Item) *uint64 {
+	if item.TotalOccurrences != nil {
+		return item.TotalOccurrences
+	}
+
+	return item.Occurrences
+}
+
+func totalOccurrences(item rollbar.Item) uint64 {
+	if item.TotalOccurrences != nil {
+		return *item.TotalOccurrences
+	}
+
+	return uint64Value(item.Occurrences)
 }
 
 func uint64Value(value *uint64) uint64 {
