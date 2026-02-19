@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/kevinsheth/rollbaz/compare/v0.1.4...v0.1.5) (2026-02-19)
+
+
+### Bug Fixes
+
+* **ci:** attach release verify check to PR head sha ([#12](https://github.com/kevinsheth/rollbaz/issues/12)) ([9e1c5b1](https://github.com/kevinsheth/rollbaz/commit/9e1c5b167a94e9f33420373112cafe80ee142efd))
+
 ## [0.1.4](https://github.com/kevinsheth/rollbaz/compare/v0.1.3...v0.1.4) (2026-02-19)
 
 
