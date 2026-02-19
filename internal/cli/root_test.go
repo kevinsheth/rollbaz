@@ -219,11 +219,11 @@ func TestProjectRemoveValidation(t *testing.T) {
 	}
 }
 
-func TestRootCommandDefaultRunsActive(t *testing.T) {
+func TestRootCommandDefaultRunsRecent(t *testing.T) {
 	stdout := setupServerAndStdout(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/1/reports/top_active_items":
-			_, _ = fmt.Fprint(w, `{"err":0,"result":[{"item":{"id":1,"counter":2,"title":"x","status":"active","environment":"production"}}]}`)
+		case "/api/1/items":
+			_, _ = fmt.Fprint(w, `{"err":0,"result":{"items":[{"id":1,"counter":3,"title":"y","status":"active","environment":"production"}]}}`)
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -234,8 +234,8 @@ func TestRootCommandDefaultRunsActive(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("root execute error = %v", err)
 	}
-	if !strings.Contains(stdout.String(), "COUNTER") || !strings.Contains(stdout.String(), "x") {
-		t.Fatalf("expected active list output, got %q", stdout.String())
+	if !strings.Contains(stdout.String(), "COUNTER") || !strings.Contains(stdout.String(), "y") {
+		t.Fatalf("expected recent list output, got %q", stdout.String())
 	}
 }
 
