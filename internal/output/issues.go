@@ -3,9 +3,20 @@ package output
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
+	"time"
+
+	"github.com/jedib0t/go-pretty/v6/table"
+	prettytext "github.com/jedib0t/go-pretty/v6/text"
 
 	"github.com/kevinsheth/rollbaz/internal/app"
+)
+
+const (
+	maxListTitleWidth     = 88
+	maxDetailValueWidth   = 100
+	maxMainErrorLineWidth = 120
 )
 
 func RenderIssueListHuman(issues []app.IssueSummary) string {
@@ -13,35 +24,48 @@ func RenderIssueListHuman(issues []app.IssueSummary) string {
 		return "no issues found"
 	}
 
-	lines := make([]string, 0, len(issues))
+	tw := table.NewWriter()
+	tw.SetStyle(table.StyleLight)
+	configureListTable(tw)
+	tw.AppendHeader(table.Row{"COUNTER", "STATUS", "ENV", "OCCURRENCES", "LAST_SEEN", "TITLE"})
+
 	for _, issue := range issues {
 		occurrences := "unknown"
 		if issue.Occurrences != nil {
 			occurrences = fmt.Sprintf("%d", *issue.Occurrences)
 		}
-		lastSeen := "unknown"
-		if issue.LastOccurrenceTimestamp != nil {
-			lastSeen = fmt.Sprintf("%d", *issue.LastOccurrenceTimestamp)
-		}
 
-		lines = append(lines, fmt.Sprintf("#%s %s | %s | env=%s | occurrences=%s | last_seen=%s", issue.Counter.String(), fallback(issue.Title), fallback(issue.Status), fallback(issue.Environment), occurrences, lastSeen))
+		tw.AppendRow(table.Row{
+			issue.Counter.String(),
+			fallback(issue.Status),
+			fallback(issue.Environment),
+			occurrences,
+			formatTimestamp(issue.LastOccurrenceTimestamp),
+			fallback(issue.Title),
+		})
 	}
 
-	return strings.Join(lines, "\n")
+	return strings.TrimRight(tw.Render(), "\n")
 }
 
 func RenderIssueDetailHuman(detail app.IssueDetail) string {
-	report := Report{
-		MainError:   detail.MainError,
-		Title:       detail.Title,
-		Status:      detail.Status,
-		Environment: detail.Environment,
-		Occurrences: detail.Occurrences,
-		Counter:     detail.Counter,
-		ItemID:      detail.ItemID,
+	occurrences := "unknown"
+	if detail.Occurrences != nil {
+		occurrences = fmt.Sprintf("%d", *detail.Occurrences)
 	}
 
-	return RenderHuman(report)
+	tw := table.NewWriter()
+	tw.SetStyle(table.StyleLight)
+	tw.SetColumnConfigs([]table.ColumnConfig{{Number: 2, WidthMax: maxDetailValueWidth, WidthMaxEnforcer: prettytext.Trim}})
+	tw.AppendRow(table.Row{"Title", fallback(detail.Title)})
+	tw.AppendRow(table.Row{"Status", fallback(detail.Status)})
+	tw.AppendRow(table.Row{"Environment", fallback(detail.Environment)})
+	tw.AppendRow(table.Row{"Occurrences", occurrences})
+	tw.AppendRow(table.Row{"Counter", detail.Counter.String()})
+	tw.AppendRow(table.Row{"Item ID", detail.ItemID.String()})
+
+	heading := "Main Error: " + prettytext.Trim(fallback(detail.MainError), maxMainErrorLineWidth)
+	return heading + "\n\n" + strings.TrimRight(tw.Render(), "\n")
 }
 
 func RenderJSON(value any) (string, error) {
@@ -51,4 +75,21 @@ func RenderJSON(value any) (string, error) {
 	}
 
 	return string(body), nil
+}
+
+func formatTimestamp(unixSeconds *uint64) string {
+	if unixSeconds == nil {
+		return "unknown"
+	}
+	if *unixSeconds > math.MaxInt64 {
+		return "unknown"
+	}
+
+	return time.Unix(int64(*unixSeconds), 0).UTC().Format(time.RFC3339)
+}
+
+func configureListTable(tw table.Writer) {
+	tw.SetColumnConfigs([]table.ColumnConfig{
+		{Number: 6, WidthMax: maxListTitleWidth, WidthMaxEnforcer: prettytext.Trim},
+	})
 }

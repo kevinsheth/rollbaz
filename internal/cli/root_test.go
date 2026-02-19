@@ -22,7 +22,7 @@ func TestRunShowHuman(t *testing.T) {
 		t.Fatalf("runShow() error = %v", err)
 	}
 
-	if !strings.Contains(stdout.String(), "main error: ABORTED") {
+	if !strings.Contains(stdout.String(), "Main Error: ABORTED") {
 		t.Fatalf("unexpected output: %q", stdout.String())
 	}
 }
@@ -57,7 +57,7 @@ func TestRunRecentHuman(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runRecent() error = %v", err)
 	}
-	if !strings.Contains(stdout.String(), "#2") {
+	if !strings.Contains(stdout.String(), "Recent") {
 		t.Fatalf("unexpected output: %q", stdout.String())
 	}
 }
@@ -179,7 +179,7 @@ func TestRootCommandDefaultRunsActive(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("root execute error = %v", err)
 	}
-	if !strings.Contains(stdout.String(), "#2") {
+	if !strings.Contains(stdout.String(), "COUNTER") || !strings.Contains(stdout.String(), "x") {
 		t.Fatalf("expected active list output, got %q", stdout.String())
 	}
 }

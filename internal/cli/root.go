@@ -9,7 +9,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jedib0t/go-pretty/v6/progress"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/kevinsheth/rollbaz/internal/app"
 	"github.com/kevinsheth/rollbaz/internal/config"
@@ -215,7 +217,9 @@ func runIssueList(parent context.Context, flags rootFlags, load func(context.Con
 		return err
 	}
 
-	issues, err := load(ctx, service, flags.Limit)
+	issues, err := runWithProgress(flags.Format, "Loading issues", func() ([]app.IssueSummary, error) {
+		return load(ctx, service, flags.Limit)
+	})
 	if err != nil {
 		return sanitizeError(err, token)
 	}
@@ -281,7 +285,9 @@ func runShow(parent context.Context, flags rootFlags, counter domain.ItemCounter
 		return err
 	}
 
-	detail, err := service.Show(ctx, counter)
+	detail, err := runWithProgress(flags.Format, "Loading issue detail", func() (app.IssueDetail, error) {
+		return service.Show(ctx, counter)
+	})
 	if err != nil {
 		return sanitizeError(err, token)
 	}
@@ -355,4 +361,58 @@ func resolveAccessToken(flags rootFlags) (string, error) {
 
 func sanitizeError(err error, token string) error {
 	return errors.New(redact.String(err.Error(), token))
+}
+
+func runWithProgress[T any](format string, message string, operation func() (T, error)) (T, error) {
+	if !shouldRenderProgress(format) {
+		return operation()
+	}
+
+	writer := progress.NewWriter()
+	writer.SetAutoStop(true)
+	writer.SetMessageLength(28)
+	writer.SetTrackerLength(18)
+	writer.SetUpdateFrequency(100 * time.Millisecond)
+	writer.SetOutputWriter(stdoutWriter)
+	writer.Style().Visibility.ETA = false
+	writer.Style().Visibility.ETAOverall = false
+	writer.Style().Visibility.Percentage = false
+	writer.Style().Visibility.Speed = false
+	writer.Style().Visibility.SpeedOverall = false
+	writer.Style().Visibility.Time = false
+	writer.Style().Visibility.TrackerOverall = false
+	writer.Style().Visibility.Value = false
+
+	tracker := progress.Tracker{Message: message, Total: 0, Units: progress.UnitsDefault}
+	writer.AppendTracker(&tracker)
+
+	go writer.Render()
+
+	result, err := operation()
+	if err != nil {
+		tracker.MarkAsErrored()
+	} else {
+		tracker.MarkAsDone()
+	}
+
+	for writer.IsRenderInProgress() {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	return result, err
+}
+
+func shouldRenderProgress(format string) bool {
+	if format != "human" {
+		return false
+	}
+	if os.Getenv("CI") != "" {
+		return false
+	}
+	file, ok := stdoutWriter.(*os.File)
+	if !ok {
+		return false
+	}
+
+	return term.IsTerminal(int(file.Fd()))
 }
