@@ -14,9 +14,11 @@ Or install from source:
 
 ```bash
 go install github.com/kevinsheth/rollbaz/cmd/rollbaz@latest
+rollbaz --help
 
 # local build
 go build ./cmd/rollbaz
+./rollbaz --help
 ```
 
 ## Configure Projects
@@ -24,9 +26,9 @@ go build ./cmd/rollbaz
 Use a Rollbar project token with read access.
 
 ```bash
-./rollbaz project add my-service --token '<ROLLBAR_PROJECT_TOKEN>'
-./rollbaz project list
-./rollbaz project use my-service
+rollbaz project add my-service --token '<ROLLBAR_PROJECT_TOKEN>'
+rollbaz project list
+rollbaz project use my-service
 ```
 
 Tokens are stored in your user config directory with strict file permissions (`0600`).
@@ -34,10 +36,10 @@ Tokens are stored in your user config directory with strict file permissions (`0
 ## Core Commands
 
 ```bash
-./rollbaz                 # default: list active issues for active project
-./rollbaz active --limit 20
-./rollbaz recent --limit 20
-./rollbaz show 274
+rollbaz                 # default: list active issues for active project
+rollbaz active --limit 20
+rollbaz recent --limit 20
+rollbaz show 274
 ```
 
 Use `--format json` on list and show commands for LLM-friendly machine output.
@@ -62,23 +64,23 @@ Long fields are truncated in human mode to keep output readable.
 
 ```bash
 # One-time setup
-./rollbaz project add my-service --token '<READ_TOKEN>'
-./rollbaz project use my-service
+rollbaz project add my-service --token '<READ_TOKEN>'
+rollbaz project use my-service
 
 # Daily triage
-./rollbaz active --limit 5
-./rollbaz recent --limit 5
+rollbaz active --limit 5
+rollbaz recent --limit 5
 
 # filtered triage
-./rollbaz active --env production --status active --since 2026-02-19T00:00:00Z --min-occurrences 5
+rollbaz active --env production --status active --since 2026-02-19T00:00:00Z --min-occurrences 5
 
 # Deep dive on one issue
-./rollbaz show 274
+rollbaz show 274
 
 # LLM-readable output
-./rollbaz show 274 --format json
-./rollbaz active --format json --limit 20
-./rollbaz recent --format json --limit 20
+rollbaz show 274 --format json
+rollbaz active --format json --limit 20
+rollbaz recent --format json --limit 20
 ```
 
 ## Token Resolution
@@ -100,9 +102,18 @@ go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
 ## Releasing
 
-Maintainers can publish a release by pushing a semver tag. The `release` GitHub Actions workflow runs GoReleaser and publishes cross-platform binaries to GitHub Releases.
+Releases are automated with Release Please + GoReleaser.
+
+1. Merge feature PRs into `main`.
+2. When you are ready to release, run the `release-please` workflow manually.
+3. It opens/updates a Release PR.
+4. Merge the Release PR.
+5. Release Please creates a semver tag.
+6. The `release` workflow runs GoReleaser and publishes cross-platform binaries to GitHub Releases.
+
+If you need to force a specific version, run the `release-please` workflow manually and set `release_as`.
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+# optional: force a release version from GitHub Actions workflow_dispatch
+# release_as: 1.2.3
 ```
