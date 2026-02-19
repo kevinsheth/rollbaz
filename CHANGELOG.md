@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/kevinsheth/rollbaz/compare/v0.2.0...v0.3.0) (2026-02-19)
+
+
+### Features
+
+* **cli:** add resolve/reopen/mute issue actions ([#20](https://github.com/kevinsheth/rollbaz/issues/20)) ([677b28c](https://github.com/kevinsheth/rollbaz/commit/677b28cc03613a4ba1a4dfa991b769329d867afa))
+* **cli:** default to recent issues with occurrence tie-break ([#19](https://github.com/kevinsheth/rollbaz/issues/19)) ([90abcfa](https://github.com/kevinsheth/rollbaz/commit/90abcfab94a4b2860c5502414224c52397697777))
+
 ## [0.2.0](https://github.com/kevinsheth/rollbaz/compare/v0.1.6...v0.2.0) (2026-02-19)
 
 
