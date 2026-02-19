@@ -1,0 +1,43 @@
+repos:
+  - repo: local
+    hooks:
+      - id: gofumpt
+        name: gofumpt check
+        entry: bash -c 'files=$(go run mvdan.cc/gofumpt@v0.7.0 -l .); if [ -n "$files" ]; then echo "$files"; exit 1; fi'
+        language: system
+        pass_filenames: false
+      - id: govet
+        name: go vet
+        entry: go vet ./...
+        language: system
+        pass_filenames: false
+      - id: staticcheck
+        name: staticcheck
+        entry: go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 ./...
+        language: system
+        pass_filenames: false
+      - id: golangci-lint
+        name: golangci-lint
+        entry: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run
+        language: system
+        pass_filenames: false
+      - id: go-test
+        name: go test
+        entry: go test ./...
+        language: system
+        pass_filenames: false
+      - id: go-test-race
+        name: go test race
+        entry: go test -race ./...
+        language: system
+        pass_filenames: false
+      - id: go-coverage
+        name: go coverage 85
+        entry: bash -c 'go test ./internal/... -coverprofile=coverage.out && go run ./scripts/coveragecheck -min 85 -file coverage.out'
+        language: system
+        pass_filenames: false
+      - id: govulncheck
+        name: govulncheck
+        entry: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+        language: system
+        pass_filenames: false

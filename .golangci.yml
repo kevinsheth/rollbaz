@@ -1,0 +1,39 @@
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - bodyclose
+    - dupl
+    - errcheck
+    - errorlint
+    - funlen
+    - gocritic
+    - gocyclo
+    - gofumpt
+    - gosec
+    - govet
+    - ineffassign
+    - nestif
+    - nolintlint
+    - staticcheck
+    - unparam
+    - unused
+    - wrapcheck
+
+linters-settings:
+  dupl:
+    threshold: 120
+  funlen:
+    lines: 40
+    statements: 30
+  gocyclo:
+    min-complexity: 10
+  nestif:
+    min-complexity: 3
+  nolintlint:
+    require-explanation: true
+    require-specific: true
+
+issues:
+  exclude-use-default: false

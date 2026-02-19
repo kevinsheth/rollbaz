@@ -1,0 +1,45 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofumpt check
+        run: |
+          files=$(go run mvdan.cc/gofumpt@v0.7.0 -l .)
+          if [ -n "$files" ]; then
+            echo "$files"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 ./...
+
+      - name: golangci-lint
+        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run
+
+      - name: unit tests
+        run: go test ./...
+
+      - name: race tests
+        run: go test -race ./...
+
+      - name: coverage gate
+        run: go test ./internal/... -coverprofile=coverage.out && go run ./scripts/coveragecheck -min 85 -file coverage.out
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...

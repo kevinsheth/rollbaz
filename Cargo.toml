@@ -1,6 +1,0 @@
-[workspace]
-members = [
-  "crates/client",
-  "crates/cli"
-]
-resolver = "2"

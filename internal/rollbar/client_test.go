@@ -1,0 +1,267 @@
+package rollbar
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/kevinsheth/rollbaz/internal/domain"
+)
+
+func TestResolveItemIDByCounterSupportsRedirectShape(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/1/item_by_counter/269" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_, _ = fmt.Fprint(w, `{"err":0,"result":{"itemId":1755568172}}`)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL+"/api/1")
+	itemID, err := client.ResolveItemIDByCounter(context.Background(), domain.ItemCounter(269))
+	if err != nil {
+		t.Fatalf("ResolveItemIDByCounter() error = %v", err)
+	}
+
+	if itemID != domain.ItemID(1755568172) {
+		t.Fatalf("ResolveItemIDByCounter() = %d", itemID)
+	}
+}
+
+func TestResolveItemIDByCounterSupportsItemShape(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"err":0,"result":{"id":99}}`)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	itemID, err := client.ResolveItemIDByCounter(context.Background(), domain.ItemCounter(269))
+	if err != nil {
+		t.Fatalf("ResolveItemIDByCounter() error = %v", err)
+	}
+
+	if itemID != domain.ItemID(99) {
+		t.Fatalf("ResolveItemIDByCounter() = %d", itemID)
+	}
+}
+
+func TestResolveItemIDByCounterMissingID(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"err":0,"result":{}}`)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	_, err := client.ResolveItemIDByCounter(context.Background(), domain.ItemCounter(1))
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+}
+
+func TestGetItem(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Rollbar-Access-Token") != "token" {
+			t.Fatalf("missing access token header")
+		}
+		_, _ = fmt.Fprint(w, `{"err":0,"result":{"id":1755568172,"project_id":766510,"counter":269,"title":"RST_STREAM","status":"active","environment":"production","total_occurrences":7}}`)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	item, err := client.GetItem(context.Background(), domain.ItemID(1755568172))
+	if err != nil {
+		t.Fatalf("GetItem() error = %v", err)
+	}
+
+	if item.Title != "RST_STREAM" {
+		t.Fatalf("GetItem() title = %q", item.Title)
+	}
+}
+
+func TestGetLatestInstanceSupportsListAndWrapped(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "list shape",
+			body: `{"err":0,"result":[{"id":1,"data":{"message":"x"}}]}`,
+		},
+		{
+			name: "wrapped shape",
+			body: `{"err":0,"result":{"instances":[{"id":2,"body":{"message":{"body":"y"}}}]}}`,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = fmt.Fprint(w, tc.body)
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server.URL)
+			instance, err := client.GetLatestInstance(context.Background(), domain.ItemID(1))
+			if err != nil {
+				t.Fatalf("GetLatestInstance() error = %v", err)
+			}
+
+			if instance == nil {
+				t.Fatalf("GetLatestInstance() returned nil instance")
+			}
+		})
+	}
+}
+
+func TestGetResultReturnsEnvelopeError(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"err":1,"message":"denied"}`)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	_, err := client.GetItem(context.Background(), domain.ItemID(1))
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+}
+
+func TestGetItemNonSuccessStatus(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = fmt.Fprint(w, `bad gateway`)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	_, err := client.GetItem(context.Background(), domain.ItemID(1))
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+}
+
+func TestGetLatestInstanceReturnsNilForEmptyList(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"err":0,"result":[]}`)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	instance, err := client.GetLatestInstance(context.Background(), domain.ItemID(1))
+	if err != nil {
+		t.Fatalf("GetLatestInstance() error = %v", err)
+	}
+
+	if instance != nil {
+		t.Fatalf("expected nil instance")
+	}
+}
+
+func TestGetItemMissingResult(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"err":0,"result":null}`)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	_, err := client.GetItem(context.Background(), domain.ItemID(1))
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+}
+
+func TestNewRejectsBlankToken(t *testing.T) {
+	t.Parallel()
+
+	if _, err := New("   "); err == nil {
+		t.Fatalf("expected token validation error")
+	}
+}
+
+func TestWrapRedactsToken(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, "https://api.rollbar.com/api/1")
+	err := client.wrap(fmt.Errorf("https://x?access_token=token"), "operation")
+	if strings.Contains(err.Error(), "access_token=token") {
+		t.Fatalf("token should be redacted")
+	}
+}
+
+func TestBuildURL(t *testing.T) {
+	t.Parallel()
+
+	got, err := buildURL("https://api.rollbar.com/api/1", "/item/1/instances?per_page=1")
+	if err != nil {
+		t.Fatalf("buildURL() error = %v", err)
+	}
+
+	want := "https://api.rollbar.com/api/1/item/1/instances?per_page=1"
+	if got != want {
+		t.Fatalf("buildURL() = %q, want %q", got, want)
+	}
+}
+
+func TestBuildURLWithoutLeadingSlash(t *testing.T) {
+	t.Parallel()
+
+	got, err := buildURL("https://api.rollbar.com/api/1/", "item/1/")
+	if err != nil {
+		t.Fatalf("buildURL() error = %v", err)
+	}
+
+	want := "https://api.rollbar.com/api/1/item/1/"
+	if got != want {
+		t.Fatalf("buildURL() = %q, want %q", got, want)
+	}
+}
+
+func TestBuildURLInvalidBase(t *testing.T) {
+	t.Parallel()
+
+	if _, err := buildURL("://bad", "/item/1/"); err == nil {
+		t.Fatalf("expected parse error")
+	}
+}
+
+func TestParseInstancesInvalid(t *testing.T) {
+	t.Parallel()
+
+	if _, err := parseInstances([]byte(`123`)); err == nil {
+		t.Fatalf("expected parse error")
+	}
+}
+
+func newTestClient(t *testing.T, baseURL string) *Client {
+	t.Helper()
+
+	client, err := NewWithBaseURL("token", baseURL)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	return client
+}
