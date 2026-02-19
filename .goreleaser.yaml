@@ -10,6 +10,8 @@ builds:
   - id: rollbaz
     main: ./cmd/rollbaz
     binary: rollbaz
+    ldflags:
+      - -X github.com/kevinsheth/rollbaz/internal/cli.version={{ .Version }}
     env:
       - CGO_ENABLED=0
     goos:

@@ -140,26 +140,25 @@ func mapSummaries(items []rollbar.Item) []IssueSummary {
 }
 
 func filterItems(items []rollbar.Item, filters IssueFilters) []rollbar.Item {
-	environment := strings.TrimSpace(filters.Environment)
-	status := strings.TrimSpace(filters.Status)
-	if !hasIssueFilters(environment, status, filters) {
+	normalized := normalizeIssueFilters(filters)
+	if !hasIssueFilters(normalized) {
 		return items
 	}
 
-	sinceUnix, untilUnix := unixBounds(filters)
+	sinceUnix, untilUnix := unixBounds(normalized)
 
 	filtered := make([]rollbar.Item, 0, len(items))
 	for _, item := range items {
-		if !matchesTextFilter(strings.TrimSpace(item.Environment), environment) {
+		if !matchesTextFilter(strings.TrimSpace(item.Environment), normalized.Environment) {
 			continue
 		}
-		if !matchesTextFilter(strings.TrimSpace(item.Status), status) {
+		if !matchesTextFilter(strings.TrimSpace(item.Status), normalized.Status) {
 			continue
 		}
 		if !matchesTimeFilter(item.LastOccurrenceTimestamp, sinceUnix, untilUnix) {
 			continue
 		}
-		if !matchesOccurrenceFilter(item, filters.MinOccurrences, filters.MaxOccurrences) {
+		if !matchesOccurrenceFilter(item, normalized.MinOccurrences, normalized.MaxOccurrences) {
 			continue
 		}
 		filtered = append(filtered, item)
@@ -168,8 +167,15 @@ func filterItems(items []rollbar.Item, filters IssueFilters) []rollbar.Item {
 	return filtered
 }
 
-func hasIssueFilters(environment string, status string, filters IssueFilters) bool {
-	return environment != "" || status != "" || filters.Since != nil || filters.Until != nil || filters.MinOccurrences != nil || filters.MaxOccurrences != nil
+func hasIssueFilters(filters IssueFilters) bool {
+	return filters.Environment != "" || filters.Status != "" || filters.Since != nil || filters.Until != nil || filters.MinOccurrences != nil || filters.MaxOccurrences != nil
+}
+
+func normalizeIssueFilters(filters IssueFilters) IssueFilters {
+	filters.Environment = strings.TrimSpace(filters.Environment)
+	filters.Status = strings.TrimSpace(filters.Status)
+
+	return filters
 }
 
 func unixBounds(filters IssueFilters) (*int64, *int64) {

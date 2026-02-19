@@ -9,6 +9,7 @@ Install with Homebrew (recommended):
 ```bash
 brew tap kevinsheth/tap
 brew install rollbaz
+rollbaz --version
 ```
 
 Download a prebuilt binary from GitHub Releases:

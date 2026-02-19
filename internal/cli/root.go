@@ -60,6 +60,7 @@ func NewRootCmd() *cobra.Command {
 			return runActive(cmd.Context(), *flags)
 		},
 	}
+	cmd.Version = version
 
 	cmd.PersistentFlags().StringVar(&flags.Format, "format", "human", "Output format: human or json")
 	cmd.PersistentFlags().StringVar(&flags.Project, "project", "", "Configured project name")

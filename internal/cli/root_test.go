@@ -186,6 +186,26 @@ func TestRootCommandDefaultRunsActive(t *testing.T) {
 	}
 }
 
+func TestVersionFlag(t *testing.T) {
+	originalVersion := version
+	version = "v9.9.9"
+	t.Cleanup(func() {
+		version = originalVersion
+	})
+
+	stdout := setupStdout(t)
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"--version"})
+	cmd.SetOut(stdout)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("version flag execute error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "v9.9.9") {
+		t.Fatalf("expected version output, got %q", stdout.String())
+	}
+}
+
 func TestActiveAndRecentSubcommands(t *testing.T) {
 	setupServerAndStdout(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
