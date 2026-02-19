@@ -1,6 +1,9 @@
 name: release-please
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       release_as:
@@ -9,6 +12,7 @@ on:
         type: string
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
   issues: write
@@ -18,13 +22,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  release-please:
+  open-release-pr:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - name: Run release-please
+      - name: Open or update release PR
         uses: googleapis/release-please-action@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           release-type: go
           skip-github-release: true
           release-as: ${{ github.event.inputs.release_as }}
+
+      - name: Trigger CI for release PR branch
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prs = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: 'open',
+              base: 'main',
+              head: `${owner}:release-please--branches--main`,
+              per_page: 1,
+            });
+
+            if (prs.data.length === 0) {
+              core.info('No open release-please PR found; skipping CI dispatch.');
+              return;
+            }
+
+            const pr = prs.data[0];
+            await github.rest.actions.createWorkflowDispatch({
+              owner,
+              repo,
+              workflow_id: 'ci.yml',
+              ref: pr.head.ref,
+            });
+
+            core.info(`Triggered ci.yml for ${pr.head.ref} (PR #${pr.number}).`);
+
+  finalize-release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Finalize merged release PR
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release-type: go
+          skip-github-pull-request: true

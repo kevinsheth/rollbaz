@@ -116,12 +116,10 @@ Releases are automated with Release Please + GoReleaser.
 2. When you are ready to release, run the `release-please` workflow manually.
 3. It opens/updates a Release PR.
 4. Merge the Release PR.
-5. Release Please creates a semver tag.
-6. The `release` workflow runs GoReleaser and publishes cross-platform binaries to GitHub Releases.
+5. A `push` to `main` triggers the release-please finalize job, which tags and marks the release PR as tagged.
+6. The `release` workflow runs GoReleaser and publishes cross-platform binaries to GitHub Releases and Homebrew tap.
 
 If you need to force a specific version, run the `release-please` workflow manually and set `release_as`.
-
-Maintainership setup: set `HOMEBREW_TAP_GITHUB_TOKEN` in this repo's Actions secrets so GoReleaser can update `kevinsheth/homebrew-tap`.
 
 ```bash
 # optional: force a release version from GitHub Actions workflow_dispatch
