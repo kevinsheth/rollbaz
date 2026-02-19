@@ -237,6 +237,11 @@ func matchesOccurrenceFilter(item rollbar.Item, minOccurrences *uint64, maxOccur
 }
 
 func mapSummary(item rollbar.Item) IssueSummary {
+	occurrences := item.TotalOccurrences
+	if occurrences == nil {
+		occurrences = item.Occurrences
+	}
+
 	return IssueSummary{
 		ItemID:                  item.ID,
 		Counter:                 domain.ItemCounter(item.Counter),
@@ -244,17 +249,9 @@ func mapSummary(item rollbar.Item) IssueSummary {
 		Status:                  item.Status,
 		Environment:             item.Environment,
 		LastOccurrenceTimestamp: item.LastOccurrenceTimestamp,
-		Occurrences:             summaryOccurrences(item),
+		Occurrences:             occurrences,
 		Raw:                     item.Raw,
 	}
-}
-
-func summaryOccurrences(item rollbar.Item) *uint64 {
-	if item.TotalOccurrences != nil {
-		return item.TotalOccurrences
-	}
-
-	return item.Occurrences
 }
 
 func totalOccurrences(item rollbar.Item) uint64 {
