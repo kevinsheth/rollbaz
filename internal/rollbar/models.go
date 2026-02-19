@@ -23,6 +23,13 @@ type Item struct {
 	Raw                     json.RawMessage `json:"-"`
 }
 
+type ItemPatch struct {
+	Status                    string `json:"status,omitempty"`
+	ResolvedInVersion         string `json:"resolved_in_version,omitempty"`
+	SnoozeEnabled             *bool  `json:"snooze_enabled,omitempty"`
+	SnoozeExpirationInSeconds *int64 `json:"snooze_expiration_in_seconds,omitempty"`
+}
+
 func (i *Item) UnmarshalJSON(data []byte) error {
 	type itemDTO struct {
 		ID                      flexibleUint64 `json:"id"`

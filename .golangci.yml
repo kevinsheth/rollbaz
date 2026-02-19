@@ -23,7 +23,7 @@ linters:
 
 linters-settings:
   dupl:
-    threshold: 120
+    threshold: 100
   funlen:
     lines: 40
     statements: 30

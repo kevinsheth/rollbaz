@@ -31,7 +31,8 @@ go build ./cmd/rollbaz
 
 ## Configure Projects
 
-Use a Rollbar project token with read access.
+Use a Rollbar project token with read access for list/show commands.
+Use a project token with write access for resolve/reopen/mute commands.
 
 Rollbar token types and permissions: https://docs.rollbar.com/docs/access-tokens
 
@@ -50,6 +51,9 @@ rollbaz                 # default: list recent active issues for active project
 rollbaz active --limit 20
 rollbaz recent --limit 20
 rollbaz show 274
+rollbaz resolve 274 --yes
+rollbaz reopen 274 --yes
+rollbaz mute 274 --for 2h --yes
 ```
 
 Use `--format json` on list and show commands for LLM-friendly machine output.
@@ -64,11 +68,6 @@ List filters (for `rollbaz`, `active`, and `recent`):
 --min-occurrences <count>
 --max-occurrences <count>
 ```
-
-Human output uses pretty terminal tables and UTC timestamps (`RFC3339`).
-In interactive terminals, commands show a short progress indicator while data is loading.
-Tables auto-size to terminal width and keep a consistent layout across commands.
-Long fields are truncated in human mode to keep output readable.
 
 ## Examples
 

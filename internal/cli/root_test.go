@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,14 +31,12 @@ func TestRunShowHuman(t *testing.T) {
 }
 
 func TestRunActiveJSON(t *testing.T) {
-	stdout := setupServerAndStdout(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/1/reports/top_active_items" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		_, _ = fmt.Fprint(w, `{"err":0,"result":[{"item":{"id":1755568172,"counter":269,"title":"RST_STREAM","status":"active","environment":"production","occurrences":7,"last_occurrence_timestamp":1700000000}}]}`)
-	}))
-
-	err := runActive(context.Background(), rootFlags{Format: "json", Limit: 10})
+	stdout, err := runIssueListCommand(
+		t,
+		"/api/1/reports/top_active_items",
+		`{"err":0,"result":[{"item":{"id":1755568172,"counter":269,"title":"RST_STREAM","status":"active","environment":"production","occurrences":7,"last_occurrence_timestamp":1700000000}}]}`,
+		func() error { return runActive(context.Background(), rootFlags{Format: "json", Limit: 10}) },
+	)
 	if err != nil {
 		t.Fatalf("runActive() error = %v", err)
 	}
@@ -48,14 +47,12 @@ func TestRunActiveJSON(t *testing.T) {
 }
 
 func TestRunRecentHuman(t *testing.T) {
-	stdout := setupServerAndStdout(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/1/items" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		_, _ = fmt.Fprint(w, `{"err":0,"result":{"items":[{"id":1,"counter":2,"title":"Recent","status":"active","environment":"production","last_occurrence_timestamp":1700000000,"occurrences":5}]}}`)
-	}))
-
-	err := runRecent(context.Background(), rootFlags{Format: "human", Limit: 10})
+	stdout, err := runIssueListCommand(
+		t,
+		"/api/1/items",
+		`{"err":0,"result":{"items":[{"id":1,"counter":2,"title":"Recent","status":"active","environment":"production","last_occurrence_timestamp":1700000000,"occurrences":5}]}}`,
+		func() error { return runRecent(context.Background(), rootFlags{Format: "human", Limit: 10}) },
+	)
 	if err != nil {
 		t.Fatalf("runRecent() error = %v", err)
 	}
@@ -284,6 +281,55 @@ func TestActiveAndRecentSubcommands(t *testing.T) {
 	}
 }
 
+func TestResolveCommandRequiresConfirmation(t *testing.T) {
+	setupServerAndStdout(t, newActionSuccessHandler(t, nil))
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"resolve", "269"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "confirmation required") {
+		t.Fatalf("expected confirmation error, got %v", err)
+	}
+}
+
+func TestResolveCommandWithYes(t *testing.T) {
+	var patchPayload rollbar.ItemPatch
+	setupServerAndStdout(t, newActionSuccessHandler(t, &patchPayload))
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"resolve", "269", "--yes", "--resolved-in-version", "v1.2.3"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("resolve command error = %v", err)
+	}
+
+	if patchPayload.Status != "resolved" || patchPayload.ResolvedInVersion != "v1.2.3" {
+		t.Fatalf("unexpected patch payload: %+v", patchPayload)
+	}
+}
+
+func TestMuteCommandInvalidDuration(t *testing.T) {
+	if err := runMute(context.Background(), rootFlags{}, 269, "500ms"); err == nil {
+		t.Fatalf("expected invalid duration error")
+	}
+}
+
+func TestMuteCommandWithYesAndDuration(t *testing.T) {
+	var patchPayload rollbar.ItemPatch
+	setupServerAndStdout(t, newActionSuccessHandler(t, &patchPayload))
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"mute", "269", "--for", "2h", "--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("mute command error = %v", err)
+	}
+	if patchPayload.Status != "muted" {
+		t.Fatalf("expected muted status patch, got %+v", patchPayload)
+	}
+	if patchPayload.SnoozeExpirationInSeconds == nil || *patchPayload.SnoozeExpirationInSeconds != int64(7200) {
+		t.Fatalf("unexpected mute expiration in patch: %+v", patchPayload)
+	}
+}
+
 func setupServerAndStdout(t *testing.T, handler http.Handler) *bytes.Buffer {
 	t.Helper()
 	t.Setenv("ROLLBAR_ACCESS_TOKEN", "token")
@@ -314,11 +360,35 @@ func runRootCommand(t *testing.T, args ...string) {
 	}
 }
 
+func runIssueListCommand(t *testing.T, expectedPath string, responseBody string, run func() error) (*bytes.Buffer, error) {
+	t.Helper()
+
+	stdout := setupServerAndStdout(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != expectedPath {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_, _ = fmt.Fprint(w, responseBody)
+	}))
+
+	err := run()
+
+	return stdout, err
+}
+
 func TestShowCommandInvalidCounter(t *testing.T) {
 	cmd := NewRootCmd()
 	cmd.SetArgs([]string{"show", "not-a-number"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatalf("expected parse error")
+	}
+}
+
+func TestShowCommandRejectsZeroCounter(t *testing.T) {
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"show", "0"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "item counter must be greater than 0") {
+		t.Fatalf("expected zero counter error, got %v", err)
 	}
 }
 
@@ -569,6 +639,37 @@ func newSuccessHandler(t *testing.T) http.Handler {
 				t.Fatalf("unexpected query: %s", r.URL.RawQuery)
 			}
 			_, _ = fmt.Fprint(w, `{"err":0,"result":[{"id":1,"data":{"trace":{"exception":{"description":"ABORTED"}}}}]}`)
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	})
+}
+
+func newActionSuccessHandler(t *testing.T, capturedPatch *rollbar.ItemPatch) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/1/item_by_counter/269":
+			_, _ = fmt.Fprint(w, `{"err":0,"result":{"itemId":1755568172}}`)
+		case "/api/1/item/1755568172":
+			if r.Method != http.MethodPatch {
+				t.Fatalf("unexpected method for patch endpoint: %s", r.Method)
+			}
+			if capturedPatch != nil {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Fatalf("ReadAll() error = %v", err)
+				}
+				if err := json.Unmarshal(body, capturedPatch); err != nil {
+					t.Fatalf("Unmarshal() error = %v", err)
+				}
+			}
+			_, _ = fmt.Fprint(w, `{"err":0,"result":{}}`)
+		case "/api/1/item/1755568172/":
+			if r.Method != http.MethodGet {
+				t.Fatalf("unexpected method for get item endpoint: %s", r.Method)
+			}
+			_, _ = fmt.Fprint(w, `{"err":0,"result":{"id":1755568172,"project_id":766510,"counter":269,"title":"RST_STREAM","status":"active","environment":"production","total_occurrences":7}}`)
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}

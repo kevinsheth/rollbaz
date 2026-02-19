@@ -2,7 +2,9 @@ package rollbar
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -80,6 +82,55 @@ func TestGetItem(t *testing.T) {
 	}
 }
 
+func TestUpdateItem(t *testing.T) {
+	t.Parallel()
+
+	expiration := int64(3600)
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		if r.URL.Path != "/item/1755568172" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
+			t.Fatalf("missing content-type header")
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("ReadAll() error = %v", err)
+		}
+
+		var patch ItemPatch
+		if err := json.Unmarshal(body, &patch); err != nil {
+			t.Fatalf("Unmarshal() error = %v", err)
+		}
+		if patch.Status != "muted" || patch.SnoozeExpirationInSeconds == nil || *patch.SnoozeExpirationInSeconds != expiration {
+			t.Fatalf("unexpected patch payload: %+v", patch)
+		}
+
+		_, _ = fmt.Fprint(w, `{"err":0,"result":{}}`)
+	})
+
+	err := client.UpdateItem(context.Background(), domain.ItemID(1755568172), ItemPatch{Status: "muted", SnoozeExpirationInSeconds: &expiration})
+	if err != nil {
+		t.Fatalf("UpdateItem() error = %v", err)
+	}
+}
+
+func TestUpdateItemEnvelopeError(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"err":1,"message":"denied"}`)
+	})
+	err := client.UpdateItem(context.Background(), domain.ItemID(1), ItemPatch{Status: "resolved"})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+}
+
 func TestGetLatestInstanceSupportsListAndWrapped(t *testing.T) {
 	t.Parallel()
 
@@ -142,6 +193,19 @@ func TestGetItemNonSuccessStatus(t *testing.T) {
 	_, err := client.GetItem(context.Background(), domain.ItemID(1))
 	if err == nil {
 		t.Fatalf("expected error")
+	}
+}
+
+func TestGetItemResponseTooLarge(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClientWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		large := strings.Repeat("a", maxResponseBodyBytes+1024)
+		_, _ = fmt.Fprintf(w, `{"err":0,"result":"%s"}`, large)
+	})
+	_, err := client.GetItem(context.Background(), domain.ItemID(1))
+	if err == nil {
+		t.Fatalf("expected response too large error")
 	}
 }
 

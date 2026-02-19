@@ -17,6 +17,7 @@ import (
 type RollbarAPI interface {
 	ResolveItemIDByCounter(ctx context.Context, counter domain.ItemCounter) (domain.ItemID, error)
 	GetItem(ctx context.Context, itemID domain.ItemID) (rollbar.Item, error)
+	UpdateItem(ctx context.Context, itemID domain.ItemID, patch rollbar.ItemPatch) error
 	GetLatestInstance(ctx context.Context, itemID domain.ItemID) (*rollbar.ItemInstance, error)
 	ListActiveItems(ctx context.Context, limit int) ([]rollbar.Item, error)
 	ListItems(ctx context.Context, status string, page int) ([]rollbar.Item, error)
@@ -56,6 +57,13 @@ type IssueFilters struct {
 	Until          *time.Time
 	MinOccurrences *uint64
 	MaxOccurrences *uint64
+}
+
+const maxResolvedVersionLength = 40
+
+type ItemActionResult struct {
+	Action string       `json:"action"`
+	Issue  IssueSummary `json:"issue"`
 }
 
 func (s *Service) Active(ctx context.Context, limit int, filters IssueFilters) ([]IssueSummary, error) {
@@ -128,6 +136,46 @@ func (s *Service) Show(ctx context.Context, counter domain.ItemCounter) (IssueDe
 		Instance:     instance,
 		InstanceRaw:  instanceRaw,
 	}, nil
+}
+
+func (s *Service) Resolve(ctx context.Context, counter domain.ItemCounter, resolvedInVersion string) (ItemActionResult, error) {
+	trimmedVersion := strings.TrimSpace(resolvedInVersion)
+	if len(trimmedVersion) > maxResolvedVersionLength {
+		return ItemActionResult{}, fmt.Errorf("resolved_in_version must be <= %d characters", maxResolvedVersionLength)
+	}
+
+	patch := rollbar.ItemPatch{Status: "resolved", ResolvedInVersion: trimmedVersion}
+
+	return s.updateItemAndFetch(ctx, counter, patch, "resolved")
+}
+
+func (s *Service) Reopen(ctx context.Context, counter domain.ItemCounter) (ItemActionResult, error) {
+	return s.updateItemAndFetch(ctx, counter, rollbar.ItemPatch{Status: "active"}, "reopened")
+}
+
+func (s *Service) Mute(ctx context.Context, counter domain.ItemCounter, durationSeconds *int64) (ItemActionResult, error) {
+	snoozeEnabled := true
+	patch := rollbar.ItemPatch{Status: "muted", SnoozeEnabled: &snoozeEnabled, SnoozeExpirationInSeconds: durationSeconds}
+
+	return s.updateItemAndFetch(ctx, counter, patch, "muted")
+}
+
+func (s *Service) updateItemAndFetch(ctx context.Context, counter domain.ItemCounter, patch rollbar.ItemPatch, action string) (ItemActionResult, error) {
+	itemID, err := s.api.ResolveItemIDByCounter(ctx, counter)
+	if err != nil {
+		return ItemActionResult{}, fmt.Errorf("resolve item id: %w", err)
+	}
+
+	if err := s.api.UpdateItem(ctx, itemID, patch); err != nil {
+		return ItemActionResult{}, fmt.Errorf("update item: %w", err)
+	}
+
+	item, err := s.api.GetItem(ctx, itemID)
+	if err != nil {
+		return ItemActionResult{}, fmt.Errorf("get item: %w", err)
+	}
+
+	return ItemActionResult{Action: action, Issue: mapSummary(item)}, nil
 }
 
 func mapSummaries(items []rollbar.Item) []IssueSummary {
