@@ -1,6 +1,6 @@
 # rollbaz
 
-Fast CLI for Rollbar triage without opening Rollbar.
+Agent-friendly CLI for Rollbar
 
 ## Install
 
@@ -42,7 +42,7 @@ rollbaz project list
 rollbaz project use my-service
 ```
 
-Tokens are stored in your user config directory with strict file permissions (`0600`).
+Tokens are stored in your user config directory.
 
 ## Core Commands
 
@@ -56,7 +56,7 @@ rollbaz reopen 274 --yes
 rollbaz mute 274 --for 2h --yes
 ```
 
-Use `--format json` on list and show commands for LLM-friendly machine output.
+Use `--format json` on list and show commands for LLM-friendly output.
 
 List filters (for `rollbaz`, `active`, and `recent`):
 
@@ -76,17 +76,13 @@ List filters (for `rollbaz`, `active`, and `recent`):
 rollbaz project add my-service --token '<READ_TOKEN>'
 rollbaz project use my-service
 
-# Daily triage
 rollbaz active --limit 5
 rollbaz recent --limit 5
 
-# filtered triage
 rollbaz active --env production --status active --since 2026-02-19T00:00:00Z --min-occurrences 5
 
-# Deep dive on one issue
 rollbaz show 274
 
-# LLM-readable output
 rollbaz show 274 --format json
 rollbaz active --format json --limit 20
 rollbaz recent --format json --limit 20
@@ -102,29 +98,11 @@ Token precedence:
 
 If you are unsure which token to use, see: https://docs.rollbar.com/docs/access-tokens
 
-## Quality Gates
+## Checks
 
 ```bash
 go test ./...
 go test -race ./...
 go test ./internal/... -coverprofile=coverage.out && go run ./scripts/coveragecheck -min 85 -file coverage.out
 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
-```
-
-## Releasing
-
-Releases are automated with Release Please + GoReleaser.
-
-1. Merge feature PRs into `main`.
-2. When you are ready to release, run the `release-please` workflow manually.
-3. It opens/updates a Release PR.
-4. Merge the Release PR.
-5. A `push` to `main` triggers the release-please finalize job, which tags and marks the release PR as tagged.
-6. In that same finalize run, GoReleaser publishes cross-platform binaries to GitHub Releases and updates Homebrew tap.
-
-If you need to force a specific version, run the `release-please` workflow manually and set `release_as`.
-
-```bash
-# optional: force a release version from GitHub Actions workflow_dispatch
-# release_as: 1.2.3
 ```
