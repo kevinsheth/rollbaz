@@ -292,6 +292,21 @@ func TestResolveCommandRequiresConfirmation(t *testing.T) {
 	}
 }
 
+func TestResolveCommandWithYesShortFlag(t *testing.T) {
+	var patchPayload rollbar.ItemPatch
+	setupServerAndStdout(t, newActionSuccessHandler(t, &patchPayload))
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"resolve", "269", "-y", "--resolved-in-version", "v1.2.3"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("resolve command error = %v", err)
+	}
+
+	if patchPayload.Status != "resolved" || patchPayload.ResolvedInVersion != "v1.2.3" {
+		t.Fatalf("unexpected patch payload: %+v", patchPayload)
+	}
+}
+
 func TestResolveCommandWithYes(t *testing.T) {
 	var patchPayload rollbar.ItemPatch
 	setupServerAndStdout(t, newActionSuccessHandler(t, &patchPayload))
@@ -319,6 +334,23 @@ func TestMuteCommandWithYesAndDuration(t *testing.T) {
 
 	cmd := NewRootCmd()
 	cmd.SetArgs([]string{"mute", "269", "--for", "2h", "--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("mute command error = %v", err)
+	}
+	if patchPayload.Status != "muted" {
+		t.Fatalf("expected muted status patch, got %+v", patchPayload)
+	}
+	if patchPayload.SnoozeExpirationInSeconds == nil || *patchPayload.SnoozeExpirationInSeconds != int64(7200) {
+		t.Fatalf("unexpected mute expiration in patch: %+v", patchPayload)
+	}
+}
+
+func TestMuteCommandWithYesShortFlagAndDuration(t *testing.T) {
+	var patchPayload rollbar.ItemPatch
+	setupServerAndStdout(t, newActionSuccessHandler(t, &patchPayload))
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"mute", "269", "--for", "2h", "-y"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("mute command error = %v", err)
 	}

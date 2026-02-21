@@ -69,7 +69,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&flags.Format, "format", "human", "Output format: human or json")
 	cmd.PersistentFlags().StringVar(&flags.Project, "project", "", "Configured project name")
 	cmd.PersistentFlags().StringVar(&flags.Token, "token", "", "Rollbar project token (overrides configured project token)")
-	cmd.PersistentFlags().BoolVar(&flags.Yes, "yes", false, "Skip confirmation prompts for write commands")
+	cmd.PersistentFlags().BoolVarP(&flags.Yes, "yes", "y", false, "Skip confirmation prompts for write commands")
 	cmd.PersistentFlags().IntVar(&flags.Limit, "limit", 10, "Maximum number of issues to show")
 	cmd.PersistentFlags().StringVar(&flags.Environment, "env", "", "Filter by environment")
 	cmd.PersistentFlags().StringVar(&flags.Status, "status", "", "Filter by status")
@@ -515,7 +515,7 @@ func confirmWrite(flags rootFlags, action string, counter domain.ItemCounter) er
 		return nil
 	}
 	if flags.Format != "human" || !canPromptConfirmation() {
-		return errors.New("confirmation required for write operation; rerun with --yes")
+		return errors.New("confirmation required for write operation; rerun with --yes (or -y)")
 	}
 
 	_, _ = fmt.Fprintf(stdoutWriter, "Confirm %s issue %s? [y/N]: ", action, counter.String())

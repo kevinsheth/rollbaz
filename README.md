@@ -51,9 +51,9 @@ rollbaz                 # default: list recent active issues for active project
 rollbaz active --limit 20
 rollbaz recent --limit 20
 rollbaz show 274
-rollbaz resolve 274 --yes
-rollbaz reopen 274 --yes
-rollbaz mute 274 --for 2h --yes
+rollbaz resolve 274 -y
+rollbaz reopen 274 -y
+rollbaz mute 274 --for 2h -y
 ```
 
 Use `--format json` on list and show commands for LLM-friendly output.
